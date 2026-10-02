@@ -36,6 +36,9 @@ services:
 
   api:
     build: .
+    env_file:
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: *database_url
       REDIS_URL: redis://redis:6379/0

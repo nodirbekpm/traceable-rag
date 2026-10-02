@@ -37,10 +37,14 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# Typographic quotes and dashes are matched on purpose: filings are full of them.
+ignore = ["RUF001"]
 
 [tool.ruff.lint.per-file-ignores]
 # SQL check-constraint literals are kept on one line so they match the database verbatim.
 "migrations/versions/*" = ["E501"]
+# HTML and prose fixtures read better on one line.
+"tests/*" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
