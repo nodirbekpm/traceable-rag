@@ -1,29 +1,20 @@
 # STATUS
 
 Oxirgi yangilanish: 2026-10-02
-Joriy bosqich: 1 — Repo skeleti, CI, EDGAR fetcher, xom saqlash, xesh, ma'lumot modeli, migratsiyalar
-Holat: to'xtagan (kod tayyor; merge va haqiqiy yuklash foydalanuvchini kutmoqda)
+Joriy bosqich: 2 — Extractor, Pydantic sxema, span provenance, validator
+Holat: boshlanmagan (1-bosqich tugallandi)
 
 ## Tugallangan bosqichlar
-- (hali yo'q)
+- [x] 1 — Repo skeleti, CI, EDGAR fetcher, xom saqlash, xesh, ma'lumot modeli, migratsiyalar (teg: v0.1.0)
 
 ## Joriy bosqichda qilinganlar
-- `main`: boshlang'ich commit (LICENSE, hook, CLAUDE.md, TZ.md) — push qilingan
-- `chore/project-skeleton`: uv loyihasi, FastAPI `/health`, compose (db, redis, migrate, api), CI — push qilingan
-- `feat/data-model` (skeleton ustida): 4 ta Core jadvali, migratsiya `0001`, cheklovlar — push qilingan
-- `feat/edgar-fetcher` (data-model ustida): EDGAR mijozi, `RawStore`, `anchor.ingest`, README, CHANGELOG — push qilingan
-- Lokal: 27 test yashil, `ruff` toza, `docker compose up` ishlaydi, `/health` = ok
+- (hali yo'q)
 
 ## Keyingi aniq qadam
-1. Foydalanuvchi `gh auth login` qiladi va `.env` ga `EDGAR_USER_AGENT` yozadi.
-2. Uchta PR ketma-ket: skeleton → data-model → edgar-fetcher. Har biri: `gh pr create --fill`,
-   `gh pr diff` bilan ko'rik, CI yashil, `gh pr merge --squash --delete-branch`.
-   Branch'lar ustma-ust qurilgan: har squash'dan keyin keyingisini
-   `git rebase --onto main <oldingi-branch-uchi> <branch>` va `git push --force-with-lease`.
-3. Haqiqiy yuklash: `docker compose run --rm api python -m anchor.ingest --cik 320193 --limit 5`,
-   ikkinchi marta ishga tushirib `stored=0` ekanini tekshirish. Raqamlarni shu faylga yozish.
-4. `git tag -a v0.1.0`, `git push --tags`, Notion sahifasiga progress.
-5. Keyin 2-bosqich: extractor, Pydantic sxema, span provenance, validator.
+- Plan mode'da 2-bosqich rejasi: xom HTML → matn (span'lar aynan qaysi matnga nisbatan hisoblanishini
+  hal qilish — xom baytlarmi yoki tozalangan matnmi), `8-K` uchun Pydantic sxema, LLM chaqiruvi,
+  qiymatni manbada topuvchi validator.
+- LLM provayderi va modeli tanlanadi (pulli — foydalanuvchidan API kalit kerak bo'ladi).
 
 ## Qabul qilingan qarorlar (TZ dan chetlashishlar)
 - `chunk`, `query_log`, `eval_result` jadvallari 4–6-bosqichlarga qoldirildi; `source_document` ga
@@ -35,10 +26,14 @@ Holat: to'xtagan (kod tayyor; merge va haqiqiy yuklash foydalanuvchini kutmoqda)
 | Metrika | Qiymat | Sana |
 |---|---|---|
 | Testlar | 27 o'tdi, ~3 s | 2026-10-02 |
+| CI (ruff + pytest) | ~25 s | 2026-10-02 |
+| Haqiqiy yuklash, Apple (CIK 320193), 5 hujjat | 1-ishga tushirish: 5 saqlandi; 2-ishga tushirish: 0 saqlandi, 5 o'tkazib yuborildi, 0 yuklab olish | 2026-10-02 |
+| Xom saqlash hajmi | 5 hujjat = 256 KB | 2026-10-02 |
 
 ## Ochiq muammolar
-- `.claude/settings.json` dagi `Read(./.env.*)` taqiqi `.env.example` ni ham yopadi — Claude uni tahrir
-  qila olmaydi. Fayldagi bo'sh qiymatlar zararsiz (`env_ignore_empty`), lekin yangi o'zgaruvchi
-  qo'shish kerak bo'lsa foydalanuvchi qo'lda qo'shadi yoki taqiq `Read(./.env)` gacha toraytiriladi.
-- CI hali GitHub'da ishlamagan (PR ochilmagan) — birinchi PR'da tekshiriladi.
+- `.claude/settings.json` dagi `Read(./.env)` va `Read(./.env.*)` taqiqlari Claude'ga `.env` yaratish va
+  `.env.example` ni tahrirlashni ham yopadi. `.env` ni foydalanuvchi o'zi yaratadi; sinovlarda
+  `EDGAR_USER_AGENT` qobiq o'zgaruvchisi sifatida beriladi.
+- Yuklangan namunada bitta `8-K/A` bor (0001140361-26-035325), lekin u tuzatayotgan asl `8-K` oxirgi
+  5 talikda emas — 3-bosqichda superseding namoyishi uchun mos juftlik tanlash kerak.
 - Starlette `TestClient` httpx bo'yicha eskirish ogohlantirishi beradi; hozircha zararsiz.
