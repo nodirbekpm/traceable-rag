@@ -1,39 +1,57 @@
 # STATUS
 
 Oxirgi yangilanish: 2026-10-02
-Joriy bosqich: 2 — Extractor, Pydantic sxema, span provenance, validator
-Holat: boshlanmagan (1-bosqich tugallandi)
+Joriy bosqich: 4 — Chunking (3 strategiya), embedding, pgvector + tsvector indekslar
+Holat: davom etmoqda
 
 ## Tugallangan bosqichlar
 - [x] 1 — Repo skeleti, CI, EDGAR fetcher, xom saqlash, xesh, ma'lumot modeli, migratsiyalar (teg: v0.1.0)
+- [~] 2 — Extractor, Pydantic sxema, span provenance, validator — kod `main`da (PR #4), **haqiqiy model
+  bilan sinalmagan**, teg qo'yilmagan
+- [~] 3 — Versiyalash, superseding, idempotentlik, review navbati — kod `main`da (PR #5), **haqiqiy model
+  bilan sinalmagan**, teg qo'yilmagan
 
-## Joriy bosqichda qilinganlar
-- (hali yo'q)
+## 2–3-bosqichni yopish uchun qolgan ish
+1. Foydalanuvchi `.env` ga `GEMINI_API_KEY` qo'shadi.
+2. `docker compose up -d --build` va `docker compose run --rm api python -m anchor.extract --limit 5`.
+   Tekshirish: run'lar `succeeded`, `verified`/`hallucinated` sonlari, narx; ikkinchi ishga tushirishda
+   model chaqirilmaydi; `8-K/A` (0001140361-26-035325) asl `8-K` (0001140361-26-015711) ning mos
+   faktlarini bosadi (`/facts/{id}/history`).
+   Xavf: Gemini `responseJsonSchema` ni yoki `gemini-2.5-flash` nomini qabul qilmasligi mumkin —
+   `src/anchor/llm.py` va `LLM_MODEL` sozlamasi.
+3. Raqamlarni shu faylga va README'ga yozish, CHANGELOG'da `[0.2.0]`/`[0.3.0]` bo'limlari, teglar.
 
-## Keyingi aniq qadam
-- Plan mode'da 2-bosqich rejasi: xom HTML → matn (span'lar aynan qaysi matnga nisbatan hisoblanishini
-  hal qilish — xom baytlarmi yoki tozalangan matnmi), `8-K` uchun Pydantic sxema, LLM chaqiruvi,
-  qiymatni manbada topuvchi validator.
-- LLM provayderi va modeli tanlanadi (pulli — foydalanuvchidan API kalit kerak bo'ladi).
+## Keyingi aniq qadam (4-bosqich)
+- `chunk` jadvali, uch chunker (fixed, sentence window, Item chegarasiga sezgir), har bo'lak
+  `text[span_start:span_end]` ga teng; lokal CPU embedding; HNSW + GIN indekslar; `anchor.index` buyrug'i.
 
 ## Qabul qilingan qarorlar (TZ dan chetlashishlar)
-- `chunk`, `query_log`, `eval_result` jadvallari 4–6-bosqichlarga qoldirildi; `source_document` ga
-  `external_id`, `publisher_id` qo'shildi → docs/decisions/001-defer-ask-tables.md
-- Bog'liqliklar `uv` bilan boshqariladi (TZ da ko'rsatilmagan)
-- `supersedes_id` ustuni bor, lekin `8-K/A` ni asl hujjatga bog'lash mantig'i 3-bosqichda
+- `chunk`, `query_log`, `eval_result` jadvallari 4–6-bosqichlarga qoldirildi → docs/decisions/001-defer-ask-tables.md
+- Model offset emas, so'zma-so'z iqtibos qaytaradi; oraliq kodda hisoblanadi, tozalangan matnga
+  nisbatan (`TEXT_VERSION`) → docs/decisions/002-quotes-instead-of-offsets.md
+- Idempotentlik kaliti: hujjat + model nomi + prompt + sxema + matn versiyasi (TZ: xesh + prompt +
+  model versiyasi). Provayder qaytargan aniq model build'i chaqiruvdan keyingina ma'lum bo'ladi, shuning
+  uchun kalitda sozlamadagi model nomi; build `model_version` da saqlanadi.
+- Majburiy qayta ajratish (`force`) yo'q: qayta ishlash uchun versiya o'zgartiriladi.
+- LLM provayderi: Gemini (bepul tarif), kod provayderga bog'lanmagan.
+- Bog'liqliklar `uv` bilan boshqariladi.
 
 ## O'lchov natijalari
 | Metrika | Qiymat | Sana |
 |---|---|---|
-| Testlar | 27 o'tdi, ~3 s | 2026-10-02 |
+| Testlar | 100 o'tdi, ~4 s | 2026-10-02 |
 | CI (ruff + pytest) | ~25 s | 2026-10-02 |
-| Haqiqiy yuklash, Apple (CIK 320193), 5 hujjat | 1-ishga tushirish: 5 saqlandi; 2-ishga tushirish: 0 saqlandi, 5 o'tkazib yuborildi, 0 yuklab olish | 2026-10-02 |
+| Haqiqiy yuklash, Apple (CIK 320193), 5 hujjat | 1-marta: 5 saqlandi; 2-marta: 0 saqlandi, 0 yuklab olish | 2026-10-02 |
 | Xom saqlash hajmi | 5 hujjat = 256 KB | 2026-10-02 |
+| HTML → matn, 5 haqiqiy hujjat | 38–73 KB HTML → 3.5–5.2 ming belgi matn | 2026-10-02 |
+| `8-K/A` → asl `8-K` bog'lash, haqiqiy juftlik | 1/1 to'g'ri (sana bo'yicha) | 2026-10-02 |
 
 ## Ochiq muammolar
-- `.claude/settings.json` dagi `Read(./.env)` va `Read(./.env.*)` taqiqlari Claude'ga `.env` yaratish va
-  `.env.example` ni tahrirlashni ham yopadi. `.env` ni foydalanuvchi o'zi yaratadi; sinovlarda
-  `EDGAR_USER_AGENT` qobiq o'zgaruvchisi sifatida beriladi.
-- Yuklangan namunada bitta `8-K/A` bor (0001140361-26-035325), lekin u tuzatayotgan asl `8-K` oxirgi
-  5 talikda emas — 3-bosqichda superseding namoyishi uchun mos juftlik tanlash kerak.
-- Starlette `TestClient` httpx bo'yicha eskirish ogohlantirishi beradi; hozircha zararsiz.
+- **Eksponatlar yuklanmaydi.** Apple'ning `Item 2.02` hujjatlarida daromad raqamlari asosiy hujjatda
+  emas, ilova qilingan press-relizda (Exhibit 99.1). Hozir faqat asosiy hujjat yuklanadi, shuning uchun
+  `revenue`, `net_income`, `eps_diluted` maydonlari deyarli bo'sh chiqadi. 6-bosqichdagi oltin to'plamdan
+  oldin eksponatlarni yuklashni qo'shish kerak.
+- Maydonlararo tekshiruv (jamlanma = qismlar yig'indisi, TZ 4.4) hali yo'q.
+- `.claude/settings.json` dagi taqiq tufayli Claude `.env` va `.env.example` ni tahrir qila olmaydi;
+  yangi o'zgaruvchilar (`GEMINI_API_KEY`, `LLM_MODEL`) `.env.example` ga qo'lda qo'shilishi kerak.
+- Docker Desktop sessiya davomida ikki marta o'zi o'chib qoldi.
