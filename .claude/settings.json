@@ -1,0 +1,26 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pytest*)",
+      "Bash(uv run*)",
+      "Bash(uv sync*)",
+      "Bash(ruff*)",
+      "Bash(alembic*)",
+      "Bash(docker compose*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git switch*)",
+      "Bash(git rebase*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git status*)"
+    ],
+    "ask": ["Bash(git push*)", "Bash(gh pr merge*)"],
+    "deny": ["Read(./.env)", "Read(./.env.*)"]
+  }
+}
