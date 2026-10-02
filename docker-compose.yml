@@ -25,10 +25,19 @@ services:
       timeout: 3s
       retries: 10
 
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: &database_url postgresql+psycopg://${POSTGRES_USER:-anchor}:${POSTGRES_PASSWORD:-anchor}@db:5432/${POSTGRES_DB:-anchor}
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
     build: .
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anchor}:${POSTGRES_PASSWORD:-anchor}@db:5432/${POSTGRES_DB:-anchor}
+      DATABASE_URL: *database_url
       REDIS_URL: redis://redis:6379/0
       EDGAR_USER_AGENT: ${EDGAR_USER_AGENT:-}
       RAW_STORAGE_DIR: /data/raw
@@ -41,6 +50,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
