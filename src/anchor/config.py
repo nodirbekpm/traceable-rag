@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     edgar_user_agent: str = ""
     raw_storage_dir: Path = Path("data/raw")
 
+    # Local CPU model, 384 dimensions. A model with another size needs a migration.
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+
     llm_provider: str = "gemini"
     llm_model: str = "gemini-2.5-flash"
     gemini_api_key: str = ""
