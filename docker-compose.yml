@@ -1,0 +1,52 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-anchor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anchor}
+      POSTGRES_DB: ${POSTGRES_DB:-anchor}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anchor}:${POSTGRES_PASSWORD:-anchor}@db:5432/${POSTGRES_DB:-anchor}
+      REDIS_URL: redis://redis:6379/0
+      EDGAR_USER_AGENT: ${EDGAR_USER_AGENT:-}
+      RAW_STORAGE_DIR: /data/raw
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - rawdata:/data/raw
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
+  rawdata:
