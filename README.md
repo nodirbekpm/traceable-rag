@@ -59,6 +59,17 @@ docker compose run --rm api python -m anchor.extract --limit 5
 Each run records model, model build, prompt version, schema version, text
 version, tokens and list-price cost.
 
+## How versioning works
+
+- **Re-extraction.** Changing the model, prompt, schema or text conversion
+  creates a new run. Its facts become current; the previous run's facts stay
+  in the table as history, each pointing at its replacement.
+- **Amendments.** An `8-K/A` names the filing it amends by date. Anchor links
+  the two (`supersedes_id`) and retires only the facts the amendment restates.
+  An amendment fact that failed verification never displaces a verified one.
+- **History.** `GET /facts/{id}/history` returns a value followed by every
+  earlier value it replaced, across runs and across filings.
+
 ## What works today
 
 | Area | State |
@@ -69,6 +80,10 @@ version, tokens and list-price cost.
 | Data model | `source_document`, `extraction_run`, `extracted_fact`, `review_queue` |
 | Extraction | 14 fields from 8-K filings via an LLM (Gemini by default, provider is a setting); every value verified against the source text |
 | Validation | Normalization for money, per-share, percent, date and Item values; range checks; `verified` / `needs_review` / `rejected` / `hallucinated` |
+| Idempotency | A document is extracted once per (model, prompt, schema, text version); enforced by a partial unique index |
+| Versioning | A newer run or an amending `8-K/A` retires old facts (`is_current = false`, `superseded_by`); nothing is deleted |
+| Review queue | Low-confidence facts wait for a human decision |
+| API | `/documents`, `/documents/{id}/facts`, `/facts/{id}/history`, `/review`, `/review/{id}/resolve` |
 | Retrieval, answers, evals | Not built yet |
 
 ## Data model

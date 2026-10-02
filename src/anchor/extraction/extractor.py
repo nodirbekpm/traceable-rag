@@ -11,8 +11,14 @@ from anchor.config import Settings
 from anchor.extraction.prompt import PROMPT_VERSION, SYSTEM, build_user_prompt
 from anchor.extraction.schema import SCHEMA_VERSION, ExtractionOut, FactOut
 from anchor.extraction.validator import validate
+from anchor.extraction.versioning import (
+    find_existing_run,
+    link_amendment,
+    reconcile_document,
+    supersede_previous_runs,
+)
 from anchor.llm import LLMClient, LLMError, cost_usd
-from anchor.models import ExtractedFact, ExtractionRun, SourceDocument
+from anchor.models import ExtractedFact, ExtractionRun, ReviewQueue, SourceDocument
 from anchor.storage import RawStore
 from anchor.text import TEXT_VERSION, html_to_text
 
@@ -47,7 +53,24 @@ def extract_document(
     store: RawStore,
     settings: Settings,
 ) -> ExtractionRun:
+    """Extract one document, or return the earlier run if this exact work was already done.
+
+    The version key is document + model + prompt + schema + text version. To
+    re-extract, change one of them; the old run and its facts are kept as history.
+    """
+    existing = find_existing_run(
+        session,
+        document.id,
+        model_name=llm.model_name,
+        prompt_version=PROMPT_VERSION,
+        schema_version=SCHEMA_VERSION,
+        text_version=TEXT_VERSION,
+    )
+    if existing is not None:
+        return existing
+
     text = html_to_text(store.get(document.raw_path))[:MAX_DOCUMENT_CHARS]
+    link_amendment(session, document, text)
     run = ExtractionRun(
         document_id=document.id,
         model_name=llm.model_name,
@@ -77,9 +100,10 @@ def extract_document(
         session.commit()
         return run
 
+    stored: list[ExtractedFact] = []
     for fact in facts:
         checked = validate(fact, text)
-        session.add(
+        stored.append(
             ExtractedFact(
                 run_id=run.id,
                 document_id=document.id,
@@ -98,6 +122,17 @@ def extract_document(
         )
     if dropped:
         logger.warning("%s: %d malformed facts dropped", document.external_id, dropped)
+    session.add_all(stored)
+    session.flush()
+    session.add_all(
+        ReviewQueue(fact_id=fact.id, reason=fact.validation_reason or "needs review")
+        for fact in stored
+        if fact.validation_status == "needs_review"
+    )
+    # The new facts, the retirement of the old ones and the run status change
+    # commit together: readers never see two current versions of a fact.
+    supersede_previous_runs(session, run)
+    reconcile_document(session, document)
     run.status = "succeeded"
     run.finished_at = datetime.now(UTC)
     session.commit()

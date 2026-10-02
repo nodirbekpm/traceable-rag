@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Provider-neutral LLM client with a Gemini backend; runs record model build,
   prompt, schema and text versions, tokens and list-price cost.
 - `python -m anchor.extract` command.
+- Idempotent extraction keyed by document, model, prompt, schema and text version.
+- Fact supersession across runs and across amended filings, with full history.
+- Automatic linking of an `8-K/A` to the `8-K` it amends.
+- Review queue for low-confidence facts.
+- Read API for documents, facts, fact history and the review queue.
 
 ## [0.1.0] - 2026-10-02
 

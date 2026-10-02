@@ -1,7 +1,6 @@
 import json
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -9,10 +8,11 @@ from sqlalchemy.orm import Session
 
 from anchor.config import Settings
 from anchor.extraction.extractor import extract_document, parse_facts
-from anchor.llm import LLMError, LLMResult
+from anchor.llm import LLMError
 from anchor.models import ExtractedFact, SourceDocument
 from anchor.storage import RawStore
 from anchor.text import html_to_text
+from llm_fakes import FakeLLM
 
 HTML = (
     b"<html><body><p>Item 2.02 Results of Operations and Financial Condition.</p>"
@@ -34,21 +34,6 @@ INVENTED = {
     "entity": None,
     "confidence": 0.99,
 }
-
-
-class FakeLLM:
-    model_name = "fake-model"
-
-    def __init__(self, facts: list[dict[str, Any]] | None = None, *, raw: str | None = None):
-        self.raw = raw if raw is not None else json.dumps({"facts": facts or []})
-        self.error: Exception | None = None
-        self.calls: list[tuple[str, str, dict[str, Any]]] = []
-
-    def generate_json(self, system: str, user: str, schema: dict[str, Any]) -> LLMResult:
-        self.calls.append((system, user, schema))
-        if self.error is not None:
-            raise self.error
-        return LLMResult(self.raw, input_tokens=1000, output_tokens=200, model_version="fake-001")
 
 
 @pytest.fixture
