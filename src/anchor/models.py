@@ -82,6 +82,8 @@ class ExtractionRun(Base):
     model_version: Mapped[str] = mapped_column(Text)
     prompt_version: Mapped[str] = mapped_column(Text)
     schema_version: Mapped[str] = mapped_column(Text)
+    # Version of the HTML->text conversion that span offsets in this run refer to.
+    text_version: Mapped[str] = mapped_column(Text, server_default="t1")
     chunk_strategy: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -130,6 +132,8 @@ class ExtractedFact(Base):
     source_excerpt: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     validation_status: Mapped[str] = mapped_column(String(16), server_default="pending")
+    # Why a fact is not verified, e.g. "quote not found in source".
+    validation_reason: Mapped[str | None] = mapped_column(Text)
     is_current: Mapped[bool] = mapped_column(server_default=text("true"))
     superseded_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("extracted_fact.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
