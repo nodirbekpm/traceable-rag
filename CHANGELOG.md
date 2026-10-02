@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic linking of an `8-K/A` to the `8-K` it amends.
 - Review queue for low-confidence facts.
 - Read API for documents, facts, fact history and the review queue.
+- Three chunking strategies (fixed, sentence window, section-aware) whose chunks
+  are exact slices of the source text.
+- Local CPU embeddings (`BAAI/bge-small-en-v1.5`) and the `chunk` table with
+  HNSW and GIN indexes; `python -m anchor.index` command.
 
 ## [0.1.0] - 2026-10-02
 

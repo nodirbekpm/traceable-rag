@@ -9,8 +9,10 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     CheckConstraint,
+    Computed,
     DateTime,
     ForeignKey,
     Index,
@@ -18,13 +20,18 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 RUN_STATUSES = ("pending", "running", "succeeded", "failed")
+# Dimension of the default local embedding model (BAAI/bge-small-en-v1.5).
+EMBEDDING_DIMENSIONS = 384
+
 VALIDATION_STATUSES = ("pending", "verified", "hallucinated", "rejected", "needs_review")
 
 
@@ -169,3 +176,39 @@ class ReviewQueue(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolution: Mapped[str | None] = mapped_column(Text)
+
+
+class Chunk(Base):
+    __tablename__ = "chunk"
+    __table_args__ = (
+        # One set of chunks per document, strategy, text conversion and embedding model.
+        UniqueConstraint(
+            "document_id", "chunk_strategy", "text_version", "embedding_model", "ordinal"
+        ),
+        CheckConstraint("span_start >= 0 AND span_end > span_start", name="span_ordered"),
+        Index(
+            "ix_chunk_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+        Index("ix_chunk_tsv", "tsv", postgresql_using="gin"),
+        Index("ix_chunk_strategy", "chunk_strategy", "embedding_model"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source_document.id"), index=True)
+    chunk_strategy: Mapped[str] = mapped_column(String(32))
+    text_version: Mapped[str] = mapped_column(Text)
+    embedding_model: Mapped[str] = mapped_column(Text)
+    ordinal: Mapped[int]
+    # "2.02" for an Item section; set only by the section-aware strategy.
+    section: Mapped[str | None] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(Text)
+    span_start: Mapped[int]
+    span_end: Mapped[int]
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
+    tsv: Mapped[str] = mapped_column(
+        TSVECTOR, Computed("to_tsvector('english', text)", persisted=True)
+    )

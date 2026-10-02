@@ -48,6 +48,8 @@ services:
       - "${API_PORT:-8000}:8000"
     volumes:
       - rawdata:/data/raw
+      # Embedding model weights, downloaded once on first use.
+      - models:/models
     depends_on:
       db:
         condition: service_healthy
@@ -64,3 +66,4 @@ services:
 volumes:
   pgdata:
   rawdata:
+  models:
