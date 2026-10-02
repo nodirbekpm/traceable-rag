@@ -44,6 +44,13 @@ free tier is enough):
 docker compose run --rm api python -m anchor.extract --limit 5
 ```
 
+Chunk and embed the filings for retrieval (no API key; the model is downloaded
+once, about 130 MB, and runs on CPU):
+
+```bash
+docker compose run --rm api python -m anchor.index
+```
+
 ## How provenance works
 
 1. The raw HTML is converted to plain text by a deterministic, versioned
@@ -84,7 +91,9 @@ version, tokens and list-price cost.
 | Versioning | A newer run or an amending `8-K/A` retires old facts (`is_current = false`, `superseded_by`); nothing is deleted |
 | Review queue | Low-confidence facts wait for a human decision |
 | API | `/documents`, `/documents/{id}/facts`, `/facts/{id}/history`, `/review`, `/review/{id}/resolve` |
-| Retrieval, answers, evals | Not built yet |
+| Chunking | Three strategies stored side by side: fixed window, sentence window, section-aware (`Item` boundaries); every chunk is an exact slice of the source text |
+| Embedding and indexes | Local CPU model (`BAAI/bge-small-en-v1.5`, 384 dims), pgvector HNSW index, `tsvector` + GIN index |
+| Hybrid retrieval, answers, evals | Not built yet |
 
 ## Data model
 
@@ -97,6 +106,18 @@ Two guarantees are enforced by the database, not only by application code:
   rows are kept forever but stay out of the index that serves current reads.
 
 `source_document.supersedes_id` links an amendment to the filing it replaces.
+
+## Measurements
+
+Numbers are from an Intel i5-12400 (6 cores), no GPU, everything in Docker.
+Targets that were missed are listed as missed.
+
+| What | Target | Measured | Status |
+|---|---|---|---|
+| Embedding throughput, `bge-small-en-v1.5`, ~740-char chunks | > 200 chunks/s | 21-25 chunks/s | **missed** (CPU only; see [decision 003](docs/decisions/003-local-cpu-embeddings.md)) |
+| Embedding throughput, `all-MiniLM-L6-v2` | > 200 chunks/s | 44-52 chunks/s | **missed** |
+| Re-indexing an already indexed corpus | no work | 0 chunks embedded, 0.1 s | ok |
+| Re-ingesting already stored filings | no work | 0 downloads, 0 rows | ok |
 
 ## Development
 
