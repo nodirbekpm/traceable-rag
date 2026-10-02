@@ -16,7 +16,10 @@ RUN uv sync --frozen --no-dev --no-editable
 
 FROM python:3.12-slim
 
-RUN useradd --create-home --uid 1000 anchor
+# The raw-document volume inherits this ownership on first mount.
+RUN useradd --create-home --uid 1000 anchor \
+    && mkdir -p /data/raw \
+    && chown anchor:anchor /data/raw
 WORKDIR /app
 
 COPY --from=builder /app/.venv /app/.venv
