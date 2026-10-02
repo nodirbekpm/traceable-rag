@@ -74,7 +74,21 @@ class SourceDocument(Base):
 
 class ExtractionRun(Base):
     __tablename__ = "extraction_run"
-    __table_args__ = (CheckConstraint(_in("status", RUN_STATUSES), name="status_valid"),)
+    __table_args__ = (
+        CheckConstraint(_in("status", RUN_STATUSES), name="status_valid"),
+        # Idempotency key: the same document is never extracted twice with the same
+        # model, prompt, schema and text version. Failed runs may be retried.
+        Index(
+            "uq_extraction_run_version_key",
+            "document_id",
+            "model_name",
+            "prompt_version",
+            "schema_version",
+            "text_version",
+            unique=True,
+            postgresql_where=text("status = 'succeeded'"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source_document.id"), index=True)
