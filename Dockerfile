@@ -20,6 +20,8 @@ RUN useradd --create-home --uid 1000 anchor
 WORKDIR /app
 
 COPY --from=builder /app/.venv /app/.venv
+COPY alembic.ini ./
+COPY migrations ./migrations
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
