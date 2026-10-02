@@ -37,6 +37,28 @@ docker compose run --rm api python -m anchor.ingest --cik 320193 --limit 5
 
 Running the same command again downloads nothing and adds no rows.
 
+Extract facts from the ingested filings (needs `GEMINI_API_KEY` in `.env`; the
+free tier is enough):
+
+```bash
+docker compose run --rm api python -m anchor.extract --limit 5
+```
+
+## How provenance works
+
+1. The raw HTML is converted to plain text by a deterministic, versioned
+   function. Every span is a pair of character offsets into that text.
+2. The model returns each value together with a **verbatim quote** that contains
+   it. It is never asked for offsets — models miscount characters.
+3. The validator looks the quote up in the real text, then the value inside the
+   quote. Found: the fact gets its span and can become `verified`. Not found:
+   it is stored as `hallucinated`, without a span, and is never shown as an answer.
+4. Values are normalized (`$4.2M`, `4,200,000 USD`, `4.2 million dollars` →
+   `4200000 USD`), range-checked, and sent to review when confidence is low.
+
+Each run records model, model build, prompt version, schema version, text
+version, tokens and list-price cost.
+
 ## What works today
 
 | Area | State |
@@ -45,7 +67,9 @@ Running the same command again downloads nothing and adds no rows.
 | Raw storage | Bytes stored exactly as received, addressed by SHA-256 |
 | Idempotent ingest | A filing is skipped by accession number before download, and by content hash after |
 | Data model | `source_document`, `extraction_run`, `extracted_fact`, `review_queue` |
-| Extraction, retrieval, answers, evals | Not built yet |
+| Extraction | 14 fields from 8-K filings via an LLM (Gemini by default, provider is a setting); every value verified against the source text |
+| Validation | Normalization for money, per-share, percent, date and Item values; range checks; `verified` / `needs_review` / `rejected` / `hallucinated` |
+| Retrieval, answers, evals | Not built yet |
 
 ## Data model
 

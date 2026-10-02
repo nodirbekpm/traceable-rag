@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Deterministic, versioned HTML to text conversion that span offsets refer to.
+- Extraction schema for 8-K filings (14 fields) and value normalization for
+  money, per-share, percent, date and Item values.
+- Provenance validator: values are located in the source text through a verbatim
+  quote; anything not found is stored as `hallucinated` and never `verified`.
+- Provider-neutral LLM client with a Gemini backend; runs record model build,
+  prompt, schema and text versions, tokens and list-price cost.
+- `python -m anchor.extract` command.
+
 ## [0.1.0] - 2026-10-02
 
 ### Added
