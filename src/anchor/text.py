@@ -5,6 +5,7 @@ here. The conversion must therefore be stable: any change to its output is a new
 `TEXT_VERSION`, and spans recorded under an older version stay tied to it.
 """
 
+import io
 import re
 from html.parser import HTMLParser
 
@@ -69,14 +70,67 @@ def decode(raw: bytes) -> str:
         return raw.decode("cp1252", errors="replace")
 
 
-def html_to_text(raw: bytes) -> str:
-    parser = _TextExtractor()
-    parser.feed(decode(raw))
-    parser.close()
-    text = "".join(parser.parts).replace("\r", "\n")
+def _clean(text: str) -> str:
+    text = text.replace("\r", "\n")
     # Non-breaking and other Unicode spaces become plain spaces so that
     # "$4.2\xa0million" in the source matches "$4.2 million" from a model.
     text = re.sub(r"[^\S\n]+", " ", text)
     lines = [line.strip() for line in text.split("\n")]
     text = "\n".join(lines)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def html_to_text(raw: bytes) -> str:
+    parser = _TextExtractor()
+    parser.feed(decode(raw))
+    parser.close()
+    return _clean("".join(parser.parts))
+
+
+def pdf_to_text(raw: bytes) -> str:
+    """Text layer of a PDF, one block per page. Scanned PDFs without a text layer yield ''."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(io.BytesIO(raw))
+    return _clean("\n\n".join(page.extract_text() or "" for page in reader.pages))
+
+
+def docx_to_text(raw: bytes) -> str:
+    """Paragraphs, then table rows with cells separated by spaces."""
+    from docx import Document
+
+    document = Document(io.BytesIO(raw))
+    blocks = [paragraph.text for paragraph in document.paragraphs]
+    for table in document.tables:
+        blocks.extend(" ".join(cell.text for cell in row.cells) for row in table.rows)
+    return _clean("\n\n".join(blocks))
+
+
+def plain_to_text(raw: bytes) -> str:
+    return _clean(decode(raw))
+
+
+MEDIA_TYPES = {
+    "text/html": html_to_text,
+    "application/pdf": pdf_to_text,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": docx_to_text,
+    "text/plain": plain_to_text,
+    "text/markdown": plain_to_text,
+}
+EXTENSIONS = {
+    ".htm": "text/html",
+    ".html": "text/html",
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+}
+
+
+def document_to_text(raw: bytes, media_type: str = "text/html") -> str:
+    """The canonical text for any supported format; spans always refer to this output."""
+    try:
+        convert = MEDIA_TYPES[media_type]
+    except KeyError:
+        raise ValueError(f"unsupported media type: {media_type}") from None
+    return convert(raw)

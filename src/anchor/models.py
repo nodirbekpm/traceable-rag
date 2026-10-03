@@ -70,6 +70,10 @@ class SourceDocument(Base):
     retrieved_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # File name for uploads; EDGAR documents are identified by `external_id`.
+    title: Mapped[str | None] = mapped_column(Text)
+    # Decides how raw bytes become text (HTML, PDF, DOCX, plain text).
+    media_type: Mapped[str] = mapped_column(String(128), server_default="text/html")
     # SHA-256 of the raw bytes exactly as received.
     content_hash: Mapped[str] = mapped_column(String(64), unique=True)
     raw_path: Mapped[str] = mapped_column(Text)
