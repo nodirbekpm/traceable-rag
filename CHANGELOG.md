@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vector, keyword and hybrid retrieval; cross-encoder and LLM rerankers.
 - Streaming `GET /ask` endpoint with per-claim citation verification and
   "not found" answers; Redis answer cache; `query_log` table.
+- Eval harness (`python -m anchor.evals`): gold set of 36 filings, 147 fields,
+  72 questions; extraction, retrieval and answer suites; `eval_result` history.
+- Viewer page at `/`: highlighted spans, streaming answers, provenance and history.
+- `python -m anchor.bench`: retrieval latency, EXPLAIN plans, HNSW vs IVFFlat,
+  partial-index saving; `HNSW_EF_SEARCH` setting.
+- Case study and portfolio entry drafts in `docs/`.
 
 ## [0.1.0] - 2026-10-02
 

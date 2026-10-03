@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anchor Viewer</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e2e1dc;
+    --accent: #2f5bd3; --verified: #d9f0dd; --review: #fff0c2; --bad: #fbdcdc;
+    --cite: #dbe5ff; --focus: #ffd54d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --panel: #1e1e1c; --text: #ecebe6; --muted: #9b9a93; --line: #34332f;
+      --accent: #7d9cff; --verified: #1f3b25; --review: #4a3d12; --bad: #4a1f1f;
+      --cite: #233056; --focus: #8a6d00;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; gap: 12px; align-items: center; padding: 12px 16px;
+           border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0 8px 0 0; }
+  select, input, button { font: inherit; color: inherit; background: var(--bg);
+                          border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  button { cursor: pointer; background: var(--accent); color: #fff; border-color: var(--accent); }
+  main { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); height: calc(100vh - 57px); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }
+  section { overflow: auto; padding: 16px; }
+  #doc { white-space: pre-wrap; background: var(--panel); border: 1px solid var(--line);
+         border-radius: 8px; padding: 16px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  mark { border-radius: 3px; color: inherit; cursor: pointer; }
+  mark.verified { background: var(--verified); }
+  mark.needs_review { background: var(--review); }
+  mark.rejected, mark.hallucinated { background: var(--bad); }
+  mark.cite { background: var(--cite); }
+  mark.focus { background: var(--focus); outline: 2px solid var(--focus); }
+  .right { border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+  form { display: flex; gap: 8px; }
+  form input { flex: 1; }
+  .claim { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .claim:last-child { border-bottom: 0; }
+  .chip { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 10px;
+          background: var(--cite); cursor: pointer; margin-left: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr.fact { cursor: pointer; }
+  tr.fact:hover { background: var(--bg); }
+  .muted { color: var(--muted); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font-size: 13px; }
+  .notfound { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Anchor</h1>
+  <select id="docs" aria-label="Document"></select>
+  <span class="muted" id="docinfo"></span>
+</header>
+<main>
+  <section><div id="doc" aria-live="polite">Select a document.</div></section>
+  <section class="right">
+    <div class="card">
+      <h2>Ask</h2>
+      <form id="ask">
+        <input id="q" placeholder="e.g. Who was appointed Chief Financial Officer?" minlength="3" required>
+        <button>Ask</button>
+      </form>
+      <div id="answer"></div>
+      <div id="latency" class="muted"></div>
+    </div>
+    <div class="card">
+      <h2>Extracted facts <span class="muted">(click to locate)</span></h2>
+      <table><thead><tr><th>Field</th><th>Value</th><th>Status</th><th>Conf.</th></tr></thead>
+      <tbody id="facts"></tbody></table>
+    </div>
+    <div class="card" id="detail" hidden>
+      <h2>Provenance</h2>
+      <div class="kv" id="detailkv"></div>
+      <h2 style="margin-top:12px">History</h2>
+      <div id="history"></div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { docId: null, text: "", facts: [], citations: [], focus: null };
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function api(path) {
+  const response = await fetch(path);
+  if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+  return response.json();
+}
+
+function render() {
+  // Spans: current facts plus citations for this document; the focused one wins.
+  const spans = [
+    ...state.facts.filter((f) => f.span_start != null)
+      .map((f) => ({ start: f.span_start, end: f.span_end, cls: f.validation_status, id: f.id })),
+    ...state.citations.filter((c) => c.document_id === state.docId)
+      .map((c) => ({ start: c.span_start, end: c.span_end, cls: "cite" })),
+  ];
+  if (state.focus) spans.push({ ...state.focus, cls: "focus" });
+  spans.sort((a, b) => a.start - b.start || (b.cls === "focus") - (a.cls === "focus"));
+  let html = "", pos = 0;
+  for (const s of spans) {
+    if (s.start < pos) continue; // overlapping spans: keep the first
+    html += esc(state.text.slice(pos, s.start));
+    const attr = s.id ? ` data-fact="${s.id}"` : "";
+    html += `<mark class="${s.cls}"${attr}>${esc(state.text.slice(s.start, s.end))}</mark>`;
+    pos = s.end;
+  }
+  html += esc(state.text.slice(pos));
+  $("doc").innerHTML = html;
+  const focused = $("doc").querySelector("mark.focus");
+  if (focused) focused.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+async function loadDocument(id) {
+  state.docId = id;
+  state.focus = null;
+  $("docs").value = id;
+  const [text, facts] = await Promise.all([api(`/documents/${id}/text`), api(`/documents/${id}/facts`)]);
+  state.text = text.text;
+  state.facts = facts;
+  const doc = state.documents.find((d) => d.id === id);
+  $("docinfo").textContent = doc ? `${doc.publisher} · ${doc.doc_type} · ${(doc.published_at || "").slice(0, 10)}` +
+    (doc.supersedes_id ? " · amends an earlier filing" : "") : "";
+  $("facts").innerHTML = facts.map((f) => `<tr class="fact" data-fact="${f.id}">
+      <td>${esc(f.field_name)}${f.entity_id ? `<div class="muted">${esc(f.entity_id)}</div>` : ""}</td>
+      <td>${esc(f.value_raw || "")}${f.value_normalized && f.value_normalized !== f.value_raw ?
+        `<div class="muted">${esc(f.value_normalized)} ${esc(f.unit || "")}</div>` : ""}</td>
+      <td>${esc(f.validation_status)}</td><td>${f.confidence ?? ""}</td></tr>`).join("") ||
+    `<tr><td colspan="4" class="muted">No facts extracted yet.</td></tr>`;
+  render();
+}
+
+async function showFact(id) {
+  const fact = state.facts.find((f) => f.id === id);
+  if (!fact) return;
+  if (fact.span_start != null) { state.focus = { start: fact.span_start, end: fact.span_end }; render(); }
+  const [run, history] = await Promise.all([api(`/runs/${fact.run_id}`), api(`/facts/${id}/history`)]);
+  const rows = {
+    "Model": `${run.model_name} (${run.model_version})`,
+    "Prompt / schema / text": `${run.prompt_version} / ${run.schema_version} / ${run.text_version}`,
+    "Status": fact.validation_status + (fact.validation_reason ? ` — ${fact.validation_reason}` : ""),
+    "Confidence": fact.confidence ?? "—",
+    "Span": fact.span_start != null ? `${fact.span_start}–${fact.span_end}` : "none (not found in source)",
+    "Run cost": run.cost_usd != null ? `$${run.cost_usd}` : "—",
+  };
+  $("detailkv").innerHTML = Object.entries(rows).map(([k, v]) => `<div class="muted">${k}</div><div>${esc(String(v))}</div>`).join("");
+  $("history").innerHTML = history.map((h) => `<div class="claim">${esc(h.value_raw || "")}
+      <span class="muted">· ${h.is_current ? "current" : "superseded"} · ${h.created_at.slice(0, 10)}</span></div>`).join("");
+  $("detail").hidden = false;
+}
+
+async function focusCitation(citation) {
+  if (citation.document_id !== state.docId) await loadDocument(citation.document_id);
+  state.focus = { start: citation.span_start, end: citation.span_end };
+  render();
+}
+
+function ask(question) {
+  $("answer").innerHTML = "";
+  $("latency").textContent = "Searching…";
+  state.citations = [];
+  const source = new EventSource(`/ask?q=${encodeURIComponent(question)}`);
+  source.addEventListener("claim", (e) => {
+    const event = JSON.parse(e.data);
+    const n = state.citations.push(event.citation);
+    const div = document.createElement("div");
+    div.className = "claim";
+    div.innerHTML = `${esc(event.text)}<span class="chip" title="${esc(event.citation.quote)}">[${n}] ${esc(event.citation.doc_type)}</span>`;
+    div.querySelector(".chip").onclick = () => focusCitation(event.citation);
+    $("answer").appendChild(div);
+    if (n === 1) focusCitation(event.citation);
+  });
+  source.addEventListener("not_found", (e) => {
+    $("answer").innerHTML = `<div class="notfound">${esc(JSON.parse(e.data).text)}</div>`;
+  });
+  source.addEventListener("done", (e) => {
+    const d = JSON.parse(e.data);
+    const ms = (v) => (v == null ? "—" : `${Math.round(v)} ms`);
+    $("latency").textContent = `retrieval ${ms(d.latency_retrieval_ms)} · rerank ${ms(d.latency_rerank_ms)} · ` +
+      `first claim ${ms(d.latency_ttft_ms)} · total ${ms(d.latency_total_ms)} · $${d.cost_usd}` +
+      (d.cache_hit ? " · cached" : "") + (d.claims_dropped ? ` · ${d.claims_dropped} unsupported claim(s) dropped` : "");
+    source.close();
+  });
+  source.onerror = () => { $("latency").textContent = "The request failed. Is GEMINI_API_KEY set?"; source.close(); };
+}
+
+$("doc").addEventListener("click", (e) => { const id = e.target.dataset?.fact; if (id) showFact(id); });
+$("facts").addEventListener("click", (e) => { const row = e.target.closest("tr[data-fact]"); if (row) showFact(row.dataset.fact); });
+$("docs").addEventListener("change", (e) => loadDocument(e.target.value));
+$("ask").addEventListener("submit", (e) => { e.preventDefault(); ask($("q").value); });
+
+(async () => {
+  state.documents = await api("/documents");
+  $("docs").innerHTML = state.documents.map((d) =>
+    `<option value="${d.id}">${esc(d.publisher)} · ${esc(d.doc_type)} · ${(d.published_at || "").slice(0, 10)}</option>`).join("");
+  if (state.documents.length) loadDocument(state.documents[0].id);
+})();
+</script>
+</body>
+</html>
