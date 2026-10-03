@@ -306,9 +306,10 @@ def ask(session: Session, question: str, **kwargs) -> dict[str, Any]:
     """Non-streaming convenience wrapper, used by the eval harness."""
     events = list(ask_stream(session, question, **kwargs))
     claims = [event for event in events if event["event"] == "claim"]
+    # Stage timings and counts from `done`, then the full claim list (not just its count).
     return {
+        **{k: v for k, v in events[-1].items() if k != "event"},
         "answer": " ".join(claim["text"] for claim in claims) or NOT_FOUND_TEXT,
         "claims": claims,
         "sources": events[0]["sources"],
-        **{k: v for k, v in events[-1].items() if k != "event"},
     }
