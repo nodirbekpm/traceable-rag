@@ -20,7 +20,12 @@ class Settings(BaseSettings):
     # HNSW search breadth: higher finds more true neighbours, slower. pgvector default: 40.
     hnsw_ef_search: int = 40
 
+    # Measured on this project's reference machine (CPU only); used by the estimate.
+    embedding_chunks_per_second: float = 20.0
+
     llm_provider: str = "gemini"
+    # Free tier quota; above it the client waits for the provider's retry delay.
+    llm_requests_per_minute: int = 10
     llm_model: str = "gemini-2.5-flash"
     gemini_api_key: str = ""
     # USD per million tokens at list price; used to report cost even on a free tier.

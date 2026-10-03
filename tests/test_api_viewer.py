@@ -48,7 +48,7 @@ def test_viewer_page_is_served(client) -> None:
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "<title>Anchor Viewer</title>" in response.text
+    assert "<title>Anchor — Verifiable Answers</title>" in response.text
 
 
 def test_document_text_is_the_text_spans_refer_to(client, document) -> None:

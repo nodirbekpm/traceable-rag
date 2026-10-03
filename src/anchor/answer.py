@@ -63,6 +63,8 @@ class AskConfig:
     strategy: str = "section"
     candidates: int = 30
     k: int = 6
+    # Limit the question to one document (e.g. a fresh upload).
+    document_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +195,7 @@ def ask_stream(
     candidates = retrieve(
         session, embedder, question, mode=config.mode, strategy=config.strategy,
         k=config.candidates,
+        document_id=uuid.UUID(config.document_id) if config.document_id else None,
     )  # fmt: skip
     retrieval_ms = elapsed_ms()
     hits = reranker.rerank(question, candidates, config.k)
