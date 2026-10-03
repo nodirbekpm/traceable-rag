@@ -1,5 +1,7 @@
 """LLM access behind one small interface, so the provider is a configuration choice."""
 
+import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Protocol
@@ -9,6 +11,9 @@ import httpx
 from anchor.config import Settings
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+GEMINI_STREAM_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"
+)
 
 
 class LLMError(RuntimeError):
@@ -29,6 +34,13 @@ class LLMClient(Protocol):
 
     def generate_json(self, system: str, user: str, schema: dict[str, Any]) -> LLMResult: ...
 
+    def stream_text(self, system: str, user: str) -> Iterator[str]:
+        """Yield text as it is generated. After exhaustion `last_usage` holds token counts."""
+        ...
+
+    @property
+    def last_usage(self) -> LLMResult | None: ...
+
 
 class GeminiClient:
     def __init__(
@@ -43,6 +55,50 @@ class GeminiClient:
         self.model_name = model_name
         self._http = httpx.Client(
             headers={"x-goog-api-key": api_key}, transport=transport, timeout=120.0
+        )
+        self._last_usage: LLMResult | None = None
+
+    @property
+    def last_usage(self) -> LLMResult | None:
+        return self._last_usage
+
+    def stream_text(self, system: str, user: str) -> Iterator[str]:
+        body = {
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [{"text": user}]}],
+            "generationConfig": {"temperature": 0},
+        }
+        self._last_usage = None
+        usage: dict[str, Any] = {}
+        model_version = self.model_name
+        produced: list[str] = []
+        url = GEMINI_STREAM_URL.format(model=self.model_name)
+        try:
+            with self._http.stream("POST", url, json=body) as response:
+                if response.is_error:
+                    response.read()
+                    raise LLMError(
+                        f"Gemini returned HTTP {response.status_code}: {response.text[:300]}"
+                    )
+                for line in response.iter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    event = json.loads(line[5:])
+                    usage = event.get("usageMetadata", usage)
+                    model_version = event.get("modelVersion", model_version)
+                    for candidate in event.get("candidates", [])[:1]:
+                        for part in candidate.get("content", {}).get("parts", []):
+                            if part.get("text") and not part.get("thought"):
+                                produced.append(part["text"])
+                                yield part["text"]
+        except httpx.TransportError as exc:
+            raise LLMError(f"Gemini request failed: {exc!r}") from exc
+        output_tokens = usage.get("candidatesTokenCount", 0) + usage.get("thoughtsTokenCount", 0)
+        self._last_usage = LLMResult(
+            text="".join(produced),
+            input_tokens=usage.get("promptTokenCount", 0),
+            output_tokens=output_tokens,
+            model_version=model_version,
         )
 
     def generate_json(self, system: str, user: str, schema: dict[str, Any]) -> LLMResult:

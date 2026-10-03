@@ -1,4 +1,3 @@
-import hashlib
 from pathlib import Path
 
 import pytest
@@ -9,6 +8,7 @@ from anchor.indexing import index_document
 from anchor.models import EMBEDDING_DIMENSIONS, Chunk, SourceDocument
 from anchor.storage import RawStore
 from anchor.text import html_to_text
+from embed_fakes import FakeEmbedder
 
 HTML = (
     b"<p>FORM 8-K</p>"
@@ -17,27 +17,6 @@ HTML = (
     b"<p>Item 5.02 Departure of Directors or Certain Officers.</p>"
     b"<p>Jane Roe was appointed Chief Financial Officer.</p>"
 )
-
-
-class FakeEmbedder:
-    """Deterministic vectors derived from the text; no model download."""
-
-    model_name = "fake-embedder"
-
-    def __init__(self, dimensions: int = EMBEDDING_DIMENSIONS) -> None:
-        self.dimensions = dimensions
-        self.calls = 0
-
-    def _vector(self, value: str) -> list[float]:
-        digest = hashlib.sha256(value.encode()).digest()
-        return [digest[i % len(digest)] / 255 for i in range(self.dimensions)]
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        self.calls += 1
-        return [self._vector(t) for t in texts]
-
-    def embed_query(self, text: str) -> list[float]:
-        return self._vector(text)
 
 
 @pytest.fixture

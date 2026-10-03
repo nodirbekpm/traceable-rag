@@ -25,7 +25,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 RUN_STATUSES = ("pending", "running", "succeeded", "failed")
@@ -215,4 +215,29 @@ class Chunk(Base):
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
     tsv: Mapped[str] = mapped_column(
         TSVECTOR, Computed("to_tsvector('english', text)", persisted=True)
+    )
+
+
+class QueryLog(Base):
+    """One row per question asked, with the latency of every stage."""
+
+    __tablename__ = "query_log"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    question: Mapped[str] = mapped_column(Text)
+    # Retrieval mode, chunk strategy, reranker, model and prompt version used.
+    config: Mapped[dict] = mapped_column(JSONB)
+    retrieved_chunk_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid))
+    answer: Mapped[str | None] = mapped_column(Text)
+    citations: Mapped[list] = mapped_column(JSONB)
+    not_found: Mapped[bool]
+    claims_dropped: Mapped[int] = mapped_column(server_default=text("0"))
+    latency_retrieval_ms: Mapped[float | None]
+    latency_rerank_ms: Mapped[float | None]
+    latency_ttft_ms: Mapped[float | None]
+    latency_total_ms: Mapped[float]
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    cache_hit: Mapped[bool]
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
     )

@@ -1,19 +1,31 @@
+import json
 import uuid
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated
+from functools import lru_cache
+from typing import Annotated, Any, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from anchor import __version__
-from anchor.db import get_session
+from anchor.answer import AskConfig, ask_stream
+from anchor.cache import RedisCache
+from anchor.config import get_settings
+from anchor.db import get_session, get_sessionmaker
+from anchor.embedding import build_embedder
 from anchor.extraction.review import ReviewError, open_reviews, resolve
 from anchor.extraction.versioning import fact_history
+from anchor.llm import LLMError, build_llm
 from anchor.models import ExtractedFact, SourceDocument
+from anchor.rerank import LLMReranker, NoReranker, cross_encoder
+from anchor.retrieval import Mode
 
 app = FastAPI(title="Anchor", version=__version__)
 
@@ -118,3 +130,57 @@ def resolve_review(review_id: uuid.UUID, decision: ReviewDecision, session: Sess
         return resolve(session, review_id, accept=decision.accept)
     except ReviewError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+
+RerankChoice = Literal["cross-encoder", "llm", "none"]
+
+
+def get_session_factory() -> Callable[[], AbstractContextManager[Session]]:
+    """Streaming responses outlive request-scoped dependencies, so they open their own session."""
+    return get_sessionmaker()
+
+
+@lru_cache
+def _redis_cache() -> RedisCache:
+    return RedisCache(get_settings().redis_url)
+
+
+def get_ask_components(rerank: RerankChoice = "cross-encoder") -> dict[str, Any]:
+    settings = get_settings()
+    try:
+        llm = build_llm(settings)
+    except LLMError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    rerankers = {
+        "cross-encoder": cross_encoder,
+        "llm": lambda: LLMReranker(llm),
+        "none": NoReranker,
+    }
+    return {
+        "embedder": build_embedder(settings),
+        "reranker": rerankers[rerank](),
+        "llm": llm,
+        "cache": _redis_cache(),
+        "settings": settings,
+    }
+
+
+@app.get("/ask")
+def ask_endpoint(
+    q: Annotated[str, Query(min_length=3, max_length=500)],
+    session_factory: Annotated[
+        Callable[[], AbstractContextManager[Session]], Depends(get_session_factory)
+    ],
+    components: Annotated[dict[str, Any], Depends(get_ask_components)],
+    mode: Mode = "hybrid",
+    strategy: Literal["fixed", "sentence", "section"] = "section",
+) -> StreamingResponse:
+    """Server-sent events: `sources`, then `claim`* or `not_found`, then `done`."""
+    config = AskConfig(mode=mode, strategy=strategy)
+
+    def events():
+        with session_factory() as session:
+            for event in ask_stream(session, q, config=config, **components):
+                yield f"event: {event['event']}\ndata: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream")

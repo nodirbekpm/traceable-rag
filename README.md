@@ -77,6 +77,22 @@ version, tokens and list-price cost.
 - **History.** `GET /facts/{id}/history` returns a value followed by every
   earlier value it replaced, across runs and across filings.
 
+## How answers are checked
+
+Ask a question and watch the answer arrive claim by claim:
+
+```bash
+curl -N "localhost:8000/ask?q=Who+was+appointed+Chief+Financial+Officer"
+```
+
+1. Retrieval returns candidate chunks (hybrid by default), a reranker keeps the best six.
+2. The model must answer as one JSON line per claim: the claim, the source it
+   relies on and a verbatim quote.
+3. Each line is checked when it completes: the quote must be in the cited chunk
+   and every number in the claim must be in the quote. Passing claims are sent
+   immediately with document-level offsets; failing ones are dropped and counted.
+4. If no claim passes, the answer is "not found" — a measured behaviour, not an error.
+
 ## What works today
 
 | Area | State |
@@ -93,7 +109,11 @@ version, tokens and list-price cost.
 | API | `/documents`, `/documents/{id}/facts`, `/facts/{id}/history`, `/review`, `/review/{id}/resolve` |
 | Chunking | Three strategies stored side by side: fixed window, sentence window, section-aware (`Item` boundaries); every chunk is an exact slice of the source text |
 | Embedding and indexes | Local CPU model (`BAAI/bge-small-en-v1.5`, 384 dims), pgvector HNSW index, `tsvector` + GIN index |
-| Hybrid retrieval, answers, evals | Not built yet |
+| Retrieval | Vector (HNSW), keyword (`tsvector`) and hybrid (reciprocal rank fusion) behind one interface |
+| Reranking | Local cross-encoder (`ms-marco-MiniLM-L-6-v2`) or LLM grading, switchable per request |
+| Answers | `GET /ask` streams server-sent events; every claim carries a verified citation with document offsets; unsupported claims are dropped; "not found" when nothing survives |
+| Cache and logging | Redis answer cache keyed by question, configuration and corpus version; `query_log` with per-stage latency and cost |
+| Evals | Not built yet |
 
 ## Data model
 
