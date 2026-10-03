@@ -5,10 +5,11 @@ from contextlib import AbstractContextManager
 from datetime import datetime
 from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,11 +24,15 @@ from anchor.embedding import build_embedder
 from anchor.extraction.review import ReviewError, open_reviews, resolve
 from anchor.extraction.versioning import fact_history
 from anchor.llm import LLMError, build_llm
-from anchor.models import ExtractedFact, SourceDocument
+from anchor.models import ExtractedFact, ExtractionRun, SourceDocument
 from anchor.rerank import LLMReranker, NoReranker, cross_encoder
 from anchor.retrieval import Mode
+from anchor.storage import RawStore
+from anchor.text import TEXT_VERSION, html_to_text
 
 app = FastAPI(title="Anchor", version=__version__)
+
+VIEWER = Path(__file__).parent / "static" / "viewer.html"
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -90,6 +95,47 @@ def health(session: SessionDep, response: Response) -> dict[str, str]:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {"status": "degraded", "database": "unreachable", "version": __version__}
     return {"status": "ok", "database": "ok", "version": __version__}
+
+
+class RunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    document_id: uuid.UUID
+    model_name: str
+    model_version: str
+    prompt_version: str
+    schema_version: str
+    text_version: str
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+    token_input: int | None
+    token_output: int | None
+    cost_usd: Decimal | None
+
+
+@app.get("/", include_in_schema=False)
+def viewer() -> FileResponse:
+    return FileResponse(VIEWER, media_type="text/html")
+
+
+@app.get("/documents/{document_id}/text")
+def document_text(document_id: uuid.UUID, session: SessionDep) -> dict[str, str]:
+    """The canonical text that every span offset refers to."""
+    document = session.get(SourceDocument, document_id)
+    if document is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
+    raw = RawStore(get_settings().raw_storage_dir).get(document.raw_path)
+    return {"text": html_to_text(raw), "text_version": TEXT_VERSION}
+
+
+@app.get("/runs/{run_id}", response_model=RunOut)
+def get_run(run_id: uuid.UUID, session: SessionDep) -> ExtractionRun:
+    run = session.get(ExtractionRun, run_id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+    return run
 
 
 @app.get("/documents", response_model=list[DocumentOut])
