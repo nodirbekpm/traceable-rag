@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from anchor.extraction.normalize import NormalizationError, normalize
 from anchor.extraction.provenance import locate
-from anchor.extraction.schema import FIELDS, FactOut, Kind
+from anchor.extraction.schema import ALL_FIELDS, FactOut, Kind
 
 REVIEW_THRESHOLD = 0.7
 # Applied when the quote matched only after whitespace/punctuation tolerance.
@@ -49,7 +49,7 @@ def _in_range(kind: Kind, normalized: str) -> bool:
 
 
 def validate(fact: FactOut, text: str) -> ValidatedFact:
-    kind = FIELDS[fact.field][0]
+    kind = ALL_FIELDS[fact.field][0]
     value_raw = " ".join(fact.value.split())
 
     def result(status: str, reason: str | None = None, **fields) -> ValidatedFact:

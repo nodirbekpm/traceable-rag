@@ -1,18 +1,22 @@
 """The extraction prompt. Any edit that can change model output bumps `PROMPT_VERSION`."""
 
-from anchor.extraction.schema import FIELDS
+from anchor.extraction.schema import SEC_8K, Profile
 
 PROMPT_VERSION = "p1"
 
-_FIELD_LIST = "\n".join(f"- {name} ({kind.value}): {desc}" for name, (kind, desc) in FIELDS.items())
 
-SYSTEM = f"""You extract structured facts from SEC Form 8-K filings.
+def build_system(profile: Profile) -> str:
+    """The 8-K profile renders exactly the prompt recorded as p1."""
+    field_list = "\n".join(
+        f"- {name} ({kind.value}): {desc}" for name, (kind, desc) in profile.fields.items()
+    )
+    return f"""You extract structured facts from {profile.subject}.
 
 Return JSON with a single key "facts": a list of objects with keys
 "field", "value", "quote", "entity", "confidence".
 
 Fields you may report:
-{_FIELD_LIST}
+{field_list}
 
 Rules:
 - "value" must be copied character for character from the document. Do not reformat,
@@ -27,6 +31,9 @@ Rules:
   to say who or what each value belongs to; otherwise set it to null.
 - "confidence" is your probability, from 0 to 1, that the value is correct for the field.
 - If nothing applies, return {{"facts": []}}."""
+
+
+SYSTEM = build_system(SEC_8K)
 
 
 def build_user_prompt(text: str) -> str:

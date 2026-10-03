@@ -5,7 +5,7 @@ import re
 from collections.abc import Iterable, Sequence
 
 from anchor.extraction.provenance import locate
-from anchor.extraction.schema import FIELDS, Kind
+from anchor.extraction.schema import ALL_FIELDS, Kind
 
 _TEXT_KINDS = {Kind.TEXT}
 
@@ -32,7 +32,7 @@ def values_match(field: str, expected: str, actual: str | None) -> bool:
     """Exact match on normalized values; for free text, either one containing the other."""
     if actual is None:
         return False
-    if FIELDS[field][0] in _TEXT_KINDS:
+    if ALL_FIELDS[field][0] in _TEXT_KINDS:
         a, b = _fold(expected), _fold(actual)
         return bool(a and b) and (a in b or b in a)
     return expected == actual

@@ -1,5 +1,9 @@
-"""What is extracted from an 8-K, and the shape the model must answer in."""
+"""What is extracted from a document, and the shape the model must answer in.
 
+Two profiles: SEC 8-K filings, and any other document a user uploads.
+"""
+
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal
 
@@ -69,3 +73,66 @@ class FactOut(BaseModel):
 
 class ExtractionOut(BaseModel):
     facts: list[FactOut]
+
+
+# Fields for any business document: contracts, reports, letters, policies, invoices.
+GENERIC_FIELDS: dict[str, tuple[Kind, str]] = {
+    "document_date": (Kind.DATE, "Date the document was issued, signed or published."),
+    "effective_date": (Kind.DATE, "Date something takes effect; say what in entity."),
+    "deadline": (Kind.DATE, "A due, expiry, maturity or termination date; say what in entity."),
+    "monetary_amount": (Kind.MONEY, "An amount of money; say what it is in entity."),
+    "percentage": (Kind.PERCENT, "A rate, share or percentage; say what it is in entity."),
+    "party": (Kind.TEXT, "An organisation involved: party, issuer, buyer, lender, regulator."),
+    "person": (Kind.TEXT, "A named person; put their role in entity."),
+    "location": (Kind.TEXT, "A place that matters to the document: site, jurisdiction, address."),
+    "duration": (Kind.TEXT, "A period such as '3 years' or '364 days'; say what in entity."),
+}
+
+GenericFieldName = Literal[
+    "document_date",
+    "effective_date",
+    "deadline",
+    "monetary_amount",
+    "percentage",
+    "party",
+    "person",
+    "location",
+    "duration",
+]
+
+ALL_FIELDS = FIELDS | GENERIC_FIELDS
+
+
+class GenericFactOut(FactOut):
+    field: GenericFieldName  # type: ignore[assignment]
+
+
+class GenericExtractionOut(BaseModel):
+    facts: list[GenericFactOut]
+
+
+@dataclass(frozen=True)
+class Profile:
+    name: str
+    # Stored as `schema_version`, so it is part of the idempotency key.
+    version: str
+    subject: str
+    fields: dict[str, tuple[Kind, str]]
+    fact_model: type[FactOut]
+    output_model: type[BaseModel]
+
+
+SEC_8K = Profile("sec-8k", SCHEMA_VERSION, "SEC Form 8-K filings", FIELDS, FactOut, ExtractionOut)
+GENERIC = Profile(
+    "generic",
+    "g1",
+    "business documents such as contracts, reports, letters and policies",
+    GENERIC_FIELDS,
+    GenericFactOut,
+    GenericExtractionOut,
+)
+UPLOAD_DOC_TYPE = "upload"
+
+
+def profile_for(doc_type: str) -> Profile:
+    return GENERIC if doc_type == UPLOAD_DOC_TYPE else SEC_8K
