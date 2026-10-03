@@ -1,0 +1,221 @@
+{
+  "description": "Primary 8-K / 8-K/A documents used by the eval suites. Exhibits are excluded on purpose: the unanswerable questions ask for numbers that only appear in press-release exhibits.",
+  "documents": [
+    {
+      "company": "Apple",
+      "cik": 320193,
+      "accession": "0001140361-26-035325",
+      "form": "8-K/A"
+    },
+    {
+      "company": "Apple",
+      "cik": 320193,
+      "accession": "0000320193-26-000018",
+      "form": "8-K"
+    },
+    {
+      "company": "Apple",
+      "cik": 320193,
+      "accession": "0000320193-26-000011",
+      "form": "8-K"
+    },
+    {
+      "company": "Apple",
+      "cik": 320193,
+      "accession": "0001140361-26-015711",
+      "form": "8-K"
+    },
+    {
+      "company": "Microsoft",
+      "cik": 789019,
+      "accession": "0001193125-26-380280",
+      "form": "8-K"
+    },
+    {
+      "company": "Microsoft",
+      "cik": 789019,
+      "accession": "0001193125-26-323632",
+      "form": "8-K"
+    },
+    {
+      "company": "Microsoft",
+      "cik": 789019,
+      "accession": "0001193125-26-258667",
+      "form": "8-K"
+    },
+    {
+      "company": "Microsoft",
+      "cik": 789019,
+      "accession": "0001193125-26-224155",
+      "form": "8-K"
+    },
+    {
+      "company": "Tesla",
+      "cik": 1318605,
+      "accession": "0001628280-26-064366",
+      "form": "8-K"
+    },
+    {
+      "company": "Tesla",
+      "cik": 1318605,
+      "accession": "0001628280-26-063820",
+      "form": "8-K"
+    },
+    {
+      "company": "Tesla",
+      "cik": 1318605,
+      "accession": "0001628280-26-049213",
+      "form": "8-K"
+    },
+    {
+      "company": "Tesla",
+      "cik": 1318605,
+      "accession": "0001628280-26-046717",
+      "form": "8-K"
+    },
+    {
+      "company": "NVIDIA",
+      "cik": 1045810,
+      "accession": "0001045810-26-000078",
+      "form": "8-K"
+    },
+    {
+      "company": "NVIDIA",
+      "cik": 1045810,
+      "accession": "0001045810-26-000073",
+      "form": "8-K"
+    },
+    {
+      "company": "NVIDIA",
+      "cik": 1045810,
+      "accession": "0001045810-26-000069",
+      "form": "8-K"
+    },
+    {
+      "company": "NVIDIA",
+      "cik": 1045810,
+      "accession": "0001045810-26-000060",
+      "form": "8-K"
+    },
+    {
+      "company": "Alphabet",
+      "cik": 1652044,
+      "accession": "0001193125-26-342390",
+      "form": "8-K"
+    },
+    {
+      "company": "Alphabet",
+      "cik": 1652044,
+      "accession": "0001652044-26-000066",
+      "form": "8-K"
+    },
+    {
+      "company": "Alphabet",
+      "cik": 1652044,
+      "accession": "0001193125-26-267578",
+      "form": "8-K"
+    },
+    {
+      "company": "Alphabet",
+      "cik": 1652044,
+      "accession": "0001193125-26-259830",
+      "form": "8-K"
+    },
+    {
+      "company": "Meta",
+      "cik": 1326801,
+      "accession": "0001628280-26-050596",
+      "form": "8-K"
+    },
+    {
+      "company": "Meta",
+      "cik": 1326801,
+      "accession": "0001628280-26-039193",
+      "form": "8-K"
+    },
+    {
+      "company": "Meta",
+      "cik": 1326801,
+      "accession": "0001193125-26-204128",
+      "form": "8-K"
+    },
+    {
+      "company": "Meta",
+      "cik": 1326801,
+      "accession": "0001628280-26-028364",
+      "form": "8-K"
+    },
+    {
+      "company": "Netflix",
+      "cik": 1065280,
+      "accession": "0001065280-26-000214",
+      "form": "8-K"
+    },
+    {
+      "company": "Netflix",
+      "cik": 1065280,
+      "accession": "0001193125-26-312575",
+      "form": "8-K"
+    },
+    {
+      "company": "Netflix",
+      "cik": 1065280,
+      "accession": "0001065280-26-000211",
+      "form": "8-K"
+    },
+    {
+      "company": "Netflix",
+      "cik": 1065280,
+      "accession": "0001065280-26-000189",
+      "form": "8-K"
+    },
+    {
+      "company": "Intel",
+      "cik": 50863,
+      "accession": "0001193125-26-346806",
+      "form": "8-K"
+    },
+    {
+      "company": "Intel",
+      "cik": 50863,
+      "accession": "0000050863-26-000155",
+      "form": "8-K"
+    },
+    {
+      "company": "Intel",
+      "cik": 50863,
+      "accession": "0000050863-26-000118",
+      "form": "8-K"
+    },
+    {
+      "company": "Intel",
+      "cik": 50863,
+      "accession": "0001193125-26-197845",
+      "form": "8-K"
+    },
+    {
+      "company": "Boeing",
+      "cik": 12927,
+      "accession": "0001628280-26-059427",
+      "form": "8-K"
+    },
+    {
+      "company": "Boeing",
+      "cik": 12927,
+      "accession": "0001628280-26-058481",
+      "form": "8-K"
+    },
+    {
+      "company": "Boeing",
+      "cik": 12927,
+      "accession": "0001628280-26-049929",
+      "form": "8-K"
+    },
+    {
+      "company": "Boeing",
+      "cik": 12927,
+      "accession": "0001628280-26-026391",
+      "form": "8-K"
+    }
+  ]
+}

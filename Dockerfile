@@ -25,6 +25,8 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY alembic.ini ./
 COPY migrations ./migrations
+# Gold sets and corpus list for `python -m anchor.evals`.
+COPY evals ./evals
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     FASTEMBED_CACHE_PATH=/models

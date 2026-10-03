@@ -50,6 +50,8 @@ services:
       - rawdata:/data/raw
       # Embedding model weights, downloaded once on first use.
       - models:/models
+      # Eval reports land in the working tree so they can be committed.
+      - ./evals/reports:/app/evals/reports
     depends_on:
       db:
         condition: service_healthy
