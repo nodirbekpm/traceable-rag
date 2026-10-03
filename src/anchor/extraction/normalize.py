@@ -38,7 +38,11 @@ _MONEY = re.compile(
         (?P<close>\))?$""",
     re.IGNORECASE | re.VERBOSE,
 )
-_PER_SHARE = re.compile(r"^(?P<open>\()?\s*(?P<minus>-)?\s*\$?\s*(?P<number>\d+(?:\.\d+)?)\s*\)?$")
+_PER_SHARE = re.compile(
+    r"^(?P<open>\()?\s*(?P<minus>-)?\s*\$?\s*(?P<number>\d+(?:\.\d+)?)\s*\)?"
+    r"(?:\s*(?:per|a)\s+(?:diluted\s+|basic\s+)?share)?$",
+    re.IGNORECASE,
+)
 _PERCENT = re.compile(r"^(?P<number>-?\d[\d,]*(?:\.\d+)?)\s*(?:%|percent)$", re.IGNORECASE)
 _ITEM = re.compile(r"^(?:Item\s+)?(?P<number>\d\.\d{2})\.?$", re.IGNORECASE)
 _DATE_FORMATS = ("%B %d, %Y", "%b %d, %Y", "%b. %d, %Y", "%Y-%m-%d", "%m/%d/%Y", "%d %B %Y")
