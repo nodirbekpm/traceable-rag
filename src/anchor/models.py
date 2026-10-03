@@ -241,3 +241,25 @@ class QueryLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+
+class EvalResult(Base):
+    """One run of an eval suite under one configuration. Kept forever to show regressions."""
+
+    __tablename__ = "eval_result"
+    __table_args__ = (
+        CheckConstraint(_in("suite", ("extraction", "retrieval", "answer")), name="suite_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    suite: Mapped[str] = mapped_column(String(16), index=True)
+    run_config: Mapped[dict] = mapped_column(JSONB)
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    metrics: Mapped[dict] = mapped_column(JSONB)
+    # Per-item outcomes, so a regression can be traced to the questions that changed.
+    details: Mapped[list] = mapped_column(JSONB)
+    avg_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    p50_ms: Mapped[float | None]
+    p95_ms: Mapped[float | None]

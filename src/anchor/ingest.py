@@ -75,6 +75,7 @@ def ingest_filings(
     limit: int | None = None,
     forms: tuple[str, ...] = ("8-K", "8-K/A"),
     with_exhibits: bool = True,
+    accessions: set[str] | None = None,
 ) -> IngestResult:
     """Ingest a company's filings and their Exhibit 99 press releases.
 
@@ -85,6 +86,9 @@ def ingest_filings(
     for filing in client.list_filings(cik, forms):
         if limit is not None and result.seen >= limit:
             break
+        # A fixed list of filings makes a corpus reproducible, unlike "the newest N".
+        if accessions is not None and filing.accession_number not in accessions:
+            continue
         result.seen += 1
 
         document = session.scalar(
