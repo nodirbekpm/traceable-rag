@@ -46,13 +46,17 @@ def use_eval_database() -> str:
     get_settings.cache_clear()
     db.get_engine.cache_clear()
     db.get_sessionmaker.cache_clear()
+    # The eval database lives longer than one release: bring its schema up to date.
+    from alembic import command
+    from alembic.config import Config
+
+    alembic = Config("alembic.ini")
+    alembic.attributes["database_url"] = eval_url
+    command.upgrade(alembic, "head")
     return eval_url
 
 
 def prepare(skip_extract: bool, pause: float) -> None:
-    from alembic import command
-    from alembic.config import Config
-
     from anchor.db import get_sessionmaker
     from anchor.edgar import EdgarClient
     from anchor.embedding import build_embedder
@@ -63,10 +67,7 @@ def prepare(skip_extract: bool, pause: float) -> None:
     from anchor.models import SourceDocument
     from anchor.storage import RawStore
 
-    url = use_eval_database()
-    alembic = Config("alembic.ini")
-    alembic.attributes["database_url"] = url
-    command.upgrade(alembic, "head")
+    use_eval_database()
 
     settings = get_settings()
     store = RawStore(settings.raw_storage_dir)
