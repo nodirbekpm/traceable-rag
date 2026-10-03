@@ -4,6 +4,7 @@ SEC fair-access rules: identify yourself in the User-Agent and stay under 10 req
 https://www.sec.gov/os/accessing-edgar-data
 """
 
+import re
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -15,6 +16,11 @@ import httpx
 
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 ARCHIVE_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}"
+INDEX_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/index.json"
+
+# Press releases with the actual numbers are usually attached as Exhibit 99.x,
+# named e.g. "a8-kex991q3.htm" or "ef2006_ex99-1.htm".
+_EXHIBIT_99 = re.compile(r"ex[-_]?99(?:[-_.]?(\d))?", re.IGNORECASE)
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
@@ -39,6 +45,25 @@ class Filing:
             accession=self.accession_number.replace("-", ""),
             document=self.primary_document,
         )
+
+
+@dataclass(frozen=True)
+class Exhibit:
+    filing: Filing
+    name: str
+    doc_type: str
+
+    @property
+    def url(self) -> str:
+        return ARCHIVE_URL.format(
+            cik=self.filing.cik,
+            accession=self.filing.accession_number.replace("-", ""),
+            document=self.name,
+        )
+
+    @property
+    def external_id(self) -> str:
+        return f"{self.filing.accession_number}/{self.name}"
 
 
 class EdgarClient:
@@ -103,6 +128,22 @@ class EdgarClient:
                 filed_at=datetime.fromisoformat(accepted),
                 primary_document=document,
             )
+
+    def list_exhibits(self, filing: Filing) -> list[Exhibit]:
+        """Exhibit 99 documents (press releases) attached to a filing."""
+        url = INDEX_URL.format(cik=filing.cik, accession=filing.accession_number.replace("-", ""))
+        exhibits = []
+        for item in self._get(url).json()["directory"]["item"]:
+            name = item["name"]
+            match = _EXHIBIT_99.search(name)
+            if match is None or not name.lower().endswith((".htm", ".html")):
+                continue
+            doc_type = f"EX-99.{match.group(1)}" if match.group(1) else "EX-99"
+            exhibits.append(Exhibit(filing=filing, name=name, doc_type=doc_type))
+        return exhibits
+
+    def download_url(self, url: str) -> bytes:
+        return self._get(url).content
 
     def download(self, filing: Filing) -> bytes:
         """Return the primary document exactly as served, with no decoding or cleanup."""

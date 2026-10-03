@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from anchor.config import get_settings
 from anchor.db import get_sessionmaker
-from anchor.edgar import EdgarClient
+from anchor.edgar import EdgarClient, Filing
 from anchor.models import SourceDocument
 from anchor.storage import RawStore
 
@@ -21,6 +21,49 @@ class IngestResult:
     seen: int = 0
     stored: int = 0
     skipped: int = 0
+    exhibits: int = 0
+
+
+def _store(session: Session, store: RawStore, content: bytes, **fields) -> SourceDocument | None:
+    """Save the bytes and a `source_document` row; None if identical content is already known."""
+    blob = store.put(content)
+    same_content = session.scalar(
+        select(SourceDocument.id).where(SourceDocument.content_hash == blob.content_hash)
+    )
+    if same_content is not None:
+        logger.warning("%s duplicates document %s; skipped", fields["external_id"], same_content)
+        return None
+    document = SourceDocument(content_hash=blob.content_hash, raw_path=blob.relative_path, **fields)
+    session.add(document)
+    # Commit per document so an interrupted run keeps what it already fetched.
+    session.commit()
+    return document
+
+
+def _ingest_exhibits(
+    session: Session, client: EdgarClient, store: RawStore, filing: Filing, parent: SourceDocument
+) -> int:
+    stored = 0
+    for exhibit in client.list_exhibits(filing):
+        known = session.scalar(
+            select(SourceDocument.id).where(SourceDocument.external_id == exhibit.external_id)
+        )
+        if known is not None:
+            continue
+        document = _store(
+            session,
+            store,
+            client.download_url(exhibit.url),
+            source_url=exhibit.url,
+            external_id=exhibit.external_id,
+            doc_type=exhibit.doc_type,
+            publisher=filing.company,
+            publisher_id=str(filing.cik),
+            published_at=filing.filed_at,
+            parent_id=parent.id,
+        )
+        stored += document is not None
+    return stored
 
 
 def ingest_filings(
@@ -31,49 +74,42 @@ def ingest_filings(
     *,
     limit: int | None = None,
     forms: tuple[str, ...] = ("8-K", "8-K/A"),
+    with_exhibits: bool = True,
 ) -> IngestResult:
-    """Ingest a company's filings. Safe to re-run: known filings are not downloaded again."""
+    """Ingest a company's filings and their Exhibit 99 press releases.
+
+    Safe to re-run: known documents are never downloaded again. The exhibit list
+    of a known filing is re-read (one small request) so older ingests get backfilled.
+    """
     result = IngestResult()
     for filing in client.list_filings(cik, forms):
         if limit is not None and result.seen >= limit:
             break
         result.seen += 1
 
-        known = session.scalar(
-            select(SourceDocument.id).where(SourceDocument.external_id == filing.accession_number)
+        document = session.scalar(
+            select(SourceDocument).where(SourceDocument.external_id == filing.accession_number)
         )
-        if known is not None:
+        if document is not None:
             result.skipped += 1
-            continue
-
-        blob = store.put(client.download(filing))
-        same_content = session.scalar(
-            select(SourceDocument.id).where(SourceDocument.content_hash == blob.content_hash)
-        )
-        if same_content is not None:
-            logger.warning(
-                "%s has the same content as document %s; skipped",
-                filing.accession_number,
-                same_content,
-            )
-            result.skipped += 1
-            continue
-
-        session.add(
-            SourceDocument(
+        else:
+            document = _store(
+                session,
+                store,
+                client.download(filing),
                 source_url=filing.url,
                 external_id=filing.accession_number,
                 doc_type=filing.form,
                 publisher=filing.company,
                 publisher_id=str(filing.cik),
                 published_at=filing.filed_at,
-                content_hash=blob.content_hash,
-                raw_path=blob.relative_path,
             )
-        )
-        # Commit per document so an interrupted run keeps what it already fetched.
-        session.commit()
-        result.stored += 1
+            if document is None:
+                result.skipped += 1
+                continue
+            result.stored += 1
+        if with_exhibits:
+            result.exhibits += _ingest_exhibits(session, client, store, filing, document)
     return result
 
 
@@ -89,7 +125,12 @@ def main() -> None:
     with EdgarClient(settings.edgar_user_agent) as client, get_sessionmaker()() as session:
         result = ingest_filings(session, client, store, args.cik, limit=args.limit)
     logger.info(
-        "cik=%s seen=%d stored=%d skipped=%d", args.cik, result.seen, result.stored, result.skipped
+        "cik=%s seen=%d stored=%d skipped=%d exhibits=%d",
+        args.cik,
+        result.seen,
+        result.stored,
+        result.skipped,
+        result.exhibits,
     )
 
 
