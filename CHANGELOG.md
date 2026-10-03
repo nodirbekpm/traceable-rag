@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are exact slices of the source text.
 - Local CPU embeddings (`BAAI/bge-small-en-v1.5`) and the `chunk` table with
   HNSW and GIN indexes; `python -m anchor.index` command.
+- Exhibit 99 press releases are ingested with their filing (`parent_id`).
+- Vector, keyword and hybrid retrieval; cross-encoder and LLM rerankers.
+- Streaming `GET /ask` endpoint with per-claim citation verification and
+  "not found" answers; Redis answer cache; `query_log` table.
 
 ## [0.1.0] - 2026-10-02
 
