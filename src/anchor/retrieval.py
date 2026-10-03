@@ -15,6 +15,7 @@ from sqlalchemy import Text, cast, func, select
 from sqlalchemy.dialects.postgresql import TSQUERY
 from sqlalchemy.orm import Session
 
+from anchor.config import get_settings
 from anchor.embedding import Embedder
 from anchor.models import Chunk, SourceDocument
 
@@ -79,6 +80,10 @@ def _scope(strategy: str, embedding_model: str):
 def search_vector(
     session: Session, query_vector: list[float], *, strategy: str, embedding_model: str, k: int
 ) -> list[Hit]:
+    # Recall/latency knob of the HNSW index; scoped to the current transaction.
+    session.execute(
+        select(func.set_config("hnsw.ef_search", str(get_settings().hnsw_ef_search), True))
+    )
     distance = Chunk.embedding.cosine_distance(query_vector)
     rows = session.execute(
         _scope(strategy, embedding_model).add_columns(distance).order_by(distance).limit(k)

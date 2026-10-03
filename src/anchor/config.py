@@ -17,6 +17,8 @@ class Settings(BaseSettings):
 
     # Local CPU model, 384 dimensions. A model with another size needs a migration.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
+    # HNSW search breadth: higher finds more true neighbours, slower. pgvector default: 40.
+    hnsw_ef_search: int = 40
 
     llm_provider: str = "gemini"
     llm_model: str = "gemini-2.5-flash"
