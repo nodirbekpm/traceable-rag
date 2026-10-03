@@ -41,7 +41,14 @@ def test_ambiguous_money_is_rejected(raw: str) -> None:
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [("$1.64", "1.64"), ("1.64", "1.64"), ("($0.12)", "-0.12"), ("$0.250", "0.25")],
+    [
+        ("$1.64", "1.64"),
+        ("1.64", "1.64"),
+        ("($0.12)", "-0.12"),
+        ("$0.250", "0.25"),
+        ("$0.27 per share", "0.27"),
+        ("$1.10 per diluted share", "1.1"),
+    ],
 )
 def test_per_share(raw: str, expected: str) -> None:
     assert normalize(Kind.PER_SHARE, raw) == Normalized(expected, "USD/share")
