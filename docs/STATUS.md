@@ -1,70 +1,61 @@
 # STATUS
 
-Oxirgi yangilanish: 2026-10-02
-Joriy bosqich: 5 — Gibrid qidiruv, reranking, javob qatlami, sitata tekshiruvi, streaming, kesh
-Holat: boshlanmagan (avval 2–3-bosqichni haqiqiy model bilan yopish kerak)
+Oxirgi yangilanish: 2026-10-03
+Joriy bosqich: 7 — kod tugadi; birgalikdagi jonli sinov kutilmoqda
+Holat: to'xtagan (Docker va Gemini kaliti bilan foydalanuvchi bilan birga ishga tushiriladi)
 
-## Tugallangan bosqichlar
-- [x] 1 — Repo skeleti, CI, EDGAR fetcher, xom saqlash, xesh, ma'lumot modeli, migratsiyalar (teg: v0.1.0)
-- [~] 2 — Extractor, Pydantic sxema, span provenance, validator — kod `main`da (PR #4), **haqiqiy model
-  bilan sinalmagan**, teg qo'yilmagan
-- [~] 3 — Versiyalash, superseding, idempotentlik, review navbati — kod `main`da (PR #5), **haqiqiy model
-  bilan sinalmagan**, teg qo'yilmagan
+## Bosqichlar
+- [x] 1 — Repo skeleti, CI, EDGAR fetcher, xom saqlash, xesh, ma'lumot modeli (teg: v0.1.0)
+- [~] 2 — Extractor, sxema, span provenance, validator — `main`da (PR #4), haqiqiy model bilan sinalmagan
+- [~] 3 — Versiyalash, superseding, idempotentlik, review — `main`da (PR #5), haqiqiy model bilan sinalmagan
+- [x] 4 — Chunking, embedding, indekslar — `main`da (PR #6), haqiqiy hujjatlarda sinalgan
+- [~] 5 — Ilovalar (PR #7), gibrid qidiruv, rerank, javob, sitata tekshiruvi, SSE, kesh (PR #8) — faqat
+  soxta model bilan sinalgan
+- [~] 6 — Eval harness va oltin to'plam (PR #9) — natija yo'q, jonli ishga tushirilmagan
+- [~] 7 — Viewer, bench, README, case study (PR #10) — bench va viewer jonli ishga tushirilmagan
 
-- [x] 4 — Chunking (3 strategiya), embedding, pgvector + tsvector indekslar — `main`da (PR #6), haqiqiy
-  hujjatlarda sinalgan; teg 2–3-bosqich yopilgach ketma-ket qo'yiladi
+Teglar: v0.2.0 … v0.7.0 jonli sinovdan keyin, natijalar README'ga yozilgach qo'yiladi.
 
-## 2–3-bosqichni yopish uchun qolgan ish
-1. Foydalanuvchi `.env` ga `GEMINI_API_KEY` qo'shadi.
-2. `docker compose up -d --build` va `docker compose run --rm api python -m anchor.extract --limit 5`.
-   Tekshirish: run'lar `succeeded`, `verified`/`hallucinated` sonlari, narx; ikkinchi ishga tushirishda
-   model chaqirilmaydi; `8-K/A` (0001140361-26-035325) asl `8-K` (0001140361-26-015711) ning mos
-   faktlarini bosadi (`/facts/{id}/history`).
-   Xavf: Gemini `responseJsonSchema` ni yoki `gemini-2.5-flash` nomini qabul qilmasligi mumkin —
-   `src/anchor/llm.py` va `LLM_MODEL` sozlamasi.
-3. Raqamlarni shu faylga va README'ga yozish, CHANGELOG'da `[0.2.0]`/`[0.3.0]` bo'limlari, teglar.
+## Jonli sinov tartibi (foydalanuvchi bilan birga)
+1. `.env`: `EDGAR_USER_AGENT`, `GEMINI_API_KEY` (va `.claude/settings.json` dagi JSON izohlarini tuzatish).
+2. `docker compose up -d --build` → `curl localhost:8000/health`.
+3. Demo baza: `python -m anchor.ingest --cik 320193 --limit 5`, `anchor.extract`, `anchor.index`;
+   viewer `http://localhost:8000`; `8-K/A` → asl `8-K` faktlari bosilganini tekshirish.
+4. Eval: `python -m anchor.evals prepare` (36 hujjat, ~36 LLM chaqiruvi, 6 s pauza),
+   `python -m anchor.evals run` (72 savol, ~8 daqiqa pauza bilan).
+5. `python -m anchor.bench` (50 000 sintetik vektor, bir necha daqiqa).
+6. Natijalarni README "Evaluation" va "Measurements" bo'limlariga, case study'ga, shu faylga yozish;
+   CHANGELOG `[Unreleased]` → versiyalar, teglar; Notion'ga progress.
 
-## Keyingi aniq qadam (5-bosqich)
-- Gibrid qidiruv: vektor (HNSW) + matn (`tsvector`) → RRF; uchala rejim alohida chaqiriladigan bo'lsin
-  (6-bosqichda taqqoslanadi). Reranking (cross-encoder, lokal). Javob qatlami: LLM, oqim (SSE), har
-  da'voga sitata, sitata tekshiruvi (`provenance.locate` qayta ishlatiladi), "topilmadi" javobi,
-  Redis kesh, `query_log` jadvali.
+## Xavflar (jonli sinovda birinchi tekshiriladi)
+- Gemini `responseJsonSchema` maydonini yoki `gemini-2.5-flash` nomini qabul qilmasligi mumkin —
+  `src/anchor/llm.py`, `LLM_MODEL`.
+- Bepul tarif chegarasi (daqiqaga/kuniga so'rov) — `--pause` bilan boshqariladi.
+- Amazon hujjatlarida `Item` sarlavhalari qator boshida emas — bo'limga sezgir chunker ularni
+  "preamble" deb oladi; eval korpusiga kiritilmagan.
 
 ## Qabul qilingan qarorlar (TZ dan chetlashishlar)
-- `chunk`, `query_log`, `eval_result` jadvallari 4–6-bosqichlarga qoldirildi → docs/decisions/001-defer-ask-tables.md
-- Model offset emas, so'zma-so'z iqtibos qaytaradi; oraliq kodda hisoblanadi, tozalangan matnga
-  nisbatan (`TEXT_VERSION`) → docs/decisions/002-quotes-instead-of-offsets.md
-- Idempotentlik kaliti: hujjat + model nomi + prompt + sxema + matn versiyasi (TZ: xesh + prompt +
-  model versiyasi). Provayder qaytargan aniq model build'i chaqiruvdan keyingina ma'lum bo'ladi, shuning
-  uchun kalitda sozlamadagi model nomi; build `model_version` da saqlanadi.
-- Majburiy qayta ajratish (`force`) yo'q: qayta ishlash uchun versiya o'zgartiriladi.
-- LLM provayderi: Gemini (bepul tarif), kod provayderga bog'lanmagan.
-- Embedding: lokal CPU modeli `BAAI/bge-small-en-v1.5`, 384 o'lcham (TZ: 1536) → docs/decisions/003-local-cpu-embeddings.md
-- Bog'liqliklar `uv` bilan boshqariladi.
+- `chunk`, `query_log`, `eval_result` keyingi bosqichlarda → docs/decisions/001-defer-ask-tables.md
+- Model offset emas, iqtibos qaytaradi → docs/decisions/002-quotes-instead-of-offsets.md
+- Lokal CPU embedding, 384 o'lcham (TZ: 1536) → docs/decisions/003-local-cpu-embeddings.md
+- Idempotentlik kaliti: hujjat + model nomi + prompt + sxema + matn versiyasi; `force` yo'q.
+- Javob oqimi: NDJSON, har da'vo qator tugashi bilan tekshiriladi (TTFT = birinchi tasdiqlangan da'vo).
+- Sitata tekshiruvi: iqtibos manbada bo'lishi va da'vodagi har raqam iqtibosda bo'lishi shart.
+- Eval korpusi ilovalarsiz (javobsiz savollar ilovalardagi raqamlarni so'raydi); alohida `_eval` baza.
+- Indeks tadqiqoti sintetik vektorlarda (haqiqiy korpus juda kichik) — README'da ochiq yozilgan.
+- LLM provayderi Gemini (bepul), Celery ishlatilmadi: barcha ishlar idempotent CLI buyruqlari, navbat
+  hajmi o'lchanmaguncha qo'shimcha infratuzilma kiritilmaydi (TZ 8-bo'lim).
 
 ## O'lchov natijalari
 | Metrika | Qiymat | Sana |
 |---|---|---|
-| Testlar | 123 o'tdi, ~5 s | 2026-10-02 |
-| CI (ruff + pytest) | ~25 s | 2026-10-02 |
-| Haqiqiy yuklash, Apple (CIK 320193), 5 hujjat | 1-marta: 5 saqlandi; 2-marta: 0 saqlandi, 0 yuklab olish | 2026-10-02 |
-| Xom saqlash hajmi | 5 hujjat = 256 KB | 2026-10-02 |
-| HTML → matn, 5 haqiqiy hujjat | 38–73 KB HTML → 3.5–5.2 ming belgi matn | 2026-10-02 |
-| `8-K/A` → asl `8-K` bog'lash, haqiqiy juftlik | 1/1 to'g'ri (sana bo'yicha) | 2026-10-02 |
-| Bo'laklash, 5 haqiqiy hujjat | fixed 33, sentence 35, section 27 bo'lak (o'rtacha 761 / 667 / 805 belgi) | 2026-10-02 |
-| Embedding tezligi, bge-small, CPU | 21–25 bo'lak/s (maqsad > 200 — **bajarilmadi**) | 2026-10-02 |
-| Embedding tezligi, all-MiniLM-L6-v2, CPU | 44–52 bo'lak/s | 2026-10-02 |
-| Qayta indekslash | 0 bo'lak, 0.1 s | 2026-10-02 |
-| Docker image hajmi | 596 MB | 2026-10-02 |
+| Testlar | lokal (bazasiz) ~120 + CI'da hammasi yashil | 2026-10-03 |
+| Oltin to'plam | 36 hujjat, 147 maydon, 62 + 10 savol; barcha iqtiboslar matnda topildi | 2026-10-03 |
+| Embedding tezligi, bge-small, CPU | 21–25 bo'lak/s (maqsad > 200 — bajarilmadi) | 2026-10-02 |
+| Qayta yuklash / qayta indekslash | 0 ish | 2026-10-02 |
+| `8-K/A` → asl `8-K` bog'lash | 1/1 to'g'ri | 2026-10-02 |
 
 ## Ochiq muammolar
-- **Eksponatlar yuklanmaydi.** Apple'ning `Item 2.02` hujjatlarida daromad raqamlari asosiy hujjatda
-  emas, ilova qilingan press-relizda (Exhibit 99.1). Hozir faqat asosiy hujjat yuklanadi, shuning uchun
-  `revenue`, `net_income`, `eps_diluted` maydonlari deyarli bo'sh chiqadi. 6-bosqichdagi oltin to'plamdan
-  oldin eksponatlarni yuklashni qo'shish kerak.
-- Maydonlararo tekshiruv (jamlanma = qismlar yig'indisi, TZ 4.4) hali yo'q.
-- `.claude/settings.json` dagi taqiq tufayli Claude `.env` va `.env.example` ni tahrir qila olmaydi;
-  yangi o'zgaruvchilar (`GEMINI_API_KEY`, `LLM_MODEL`) `.env.example` ga qo'lda qo'shilishi kerak.
-- Docker Desktop sessiya davomida uch marta o'zi o'chib qoldi; xostda bo'sh RAM ~2 GB edi. Baza
-  buyruqlari osilib qolsa birinchi navbatda `docker info` ni tekshirish.
-- Korpus juda kichik (5 hujjat, 95 bo'lak) — indeks va tezlik o'lchovlari uchun ko'proq kompaniya yuklash kerak.
+- Maydonlararo tekshiruv (jamlanma = qismlar yig'indisi, TZ 4.4) yo'q.
+- `8-K/A` ilovalari asl hujjat ilovalarini bosmaydi (faqat asosiy hujjatlar).
+- Docker Desktop xostda RAM kam bo'lganda o'chib qolgan.
