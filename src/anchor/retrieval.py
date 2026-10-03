@@ -69,16 +69,23 @@ def _hits(session: Session, rows: Sequence, scores: Sequence[float]) -> list[Hit
     ]
 
 
-def _scope(strategy: str, embedding_model: str):
-    return (
+def _scope(strategy: str, embedding_model: str, document_id: uuid.UUID | None = None):
+    query = (
         select(Chunk, SourceDocument)
         .join(SourceDocument, SourceDocument.id == Chunk.document_id)
         .where(Chunk.chunk_strategy == strategy, Chunk.embedding_model == embedding_model)
     )
+    return query if document_id is None else query.where(Chunk.document_id == document_id)
 
 
 def search_vector(
-    session: Session, query_vector: list[float], *, strategy: str, embedding_model: str, k: int
+    session: Session,
+    query_vector: list[float],
+    *,
+    strategy: str,
+    embedding_model: str,
+    k: int,
+    document_id: uuid.UUID | None = None,
 ) -> list[Hit]:
     # Recall/latency knob of the HNSW index; scoped to the current transaction.
     session.execute(
@@ -86,7 +93,10 @@ def search_vector(
     )
     distance = Chunk.embedding.cosine_distance(query_vector)
     rows = session.execute(
-        _scope(strategy, embedding_model).add_columns(distance).order_by(distance).limit(k)
+        _scope(strategy, embedding_model, document_id)
+        .add_columns(distance)
+        .order_by(distance)
+        .limit(k)
     ).all()
     return _hits(session, [(c, d) for c, d, _ in rows], [1 - dist for _, _, dist in rows])
 
@@ -98,12 +108,18 @@ def keyword_query(question: str):
 
 
 def search_text(
-    session: Session, question: str, *, strategy: str, embedding_model: str, k: int
+    session: Session,
+    question: str,
+    *,
+    strategy: str,
+    embedding_model: str,
+    k: int,
+    document_id: uuid.UUID | None = None,
 ) -> list[Hit]:
     query = keyword_query(question)
     rank = func.ts_rank_cd(Chunk.tsv, query)
     rows = session.execute(
-        _scope(strategy, embedding_model)
+        _scope(strategy, embedding_model, document_id)
         .add_columns(rank)
         .where(Chunk.tsv.op("@@")(query))
         .order_by(rank.desc(), Chunk.ordinal)
@@ -131,8 +147,13 @@ def retrieve(
     mode: Mode = "hybrid",
     strategy: str = "section",
     k: int = 20,
+    document_id: uuid.UUID | None = None,
 ) -> list[Hit]:
-    scope = {"strategy": strategy, "embedding_model": embedder.model_name}
+    scope = {
+        "strategy": strategy,
+        "embedding_model": embedder.model_name,
+        "document_id": document_id,
+    }
     if mode == "text":
         return search_text(session, question, k=k, **scope)
     query_vector = embedder.embed_query(question)

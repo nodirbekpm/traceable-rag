@@ -15,7 +15,8 @@ evidence: it has a source, a version, a confidence and a measured accuracy.
 | **Versioning** | Nothing is deleted. A re-extraction or an amended filing (`8-K/A`) retires old values and links them to their replacement, so "what was this number six months ago, and why did it change?" always has an answer. |
 | **Measurement** | Accuracy, citation correctness, refusal rate, latency and cost are numbers from a gold set — including the targets that were missed. |
 
-Demo domain: SEC EDGAR `8-K` and `8-K/A` filings and their press-release exhibits.
+Works on **any document you upload** — PDF, Word, HTML, text or Markdown — and ships with
+SEC EDGAR `8-K` / `8-K/A` filings as a reproducible demo and evaluation corpus.
 
 ## Quick start
 
@@ -41,6 +42,22 @@ or a citation scrolls to its exact span and shows model, versions and history.
 
 Every command is idempotent: running it again downloads, extracts or embeds
 nothing that is already there.
+
+### Your own documents
+
+Drop a file on the viewer (or `POST /documents`). Nothing runs yet: Anchor first
+answers *what will this cost?* — pages, words, model calls, **seconds** and dollars,
+estimated from this installation's own past runs. Confirm, and the analysis runs in
+the background with a progress bar; long files are read in parts, and every value
+still gets an exact span in the full document. Uploaded documents use a general
+field set (dates, amounts, parties, people, percentages, deadlines, durations).
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /documents` | upload; returns the document and the estimate |
+| `POST /documents/{id}/analyze` | start extraction and indexing in the background |
+| `GET /documents/{id}/status` | progress: queued, extracting, indexing, ready, failed |
+| `GET /ask?q=…&document_id=…` | ask, optionally limited to one document |
 
 ## Architecture
 
@@ -179,6 +196,13 @@ misses exact tokens (`Item 2.02`, `$4.2M`). *Alternatives:* Elasticsearch/OpenSe
 matching, fused with vector results by RRF — no score calibration, no second
 datastore. *Result:* compared against vector-only and keyword-only in the
 retrieval suite; Elasticsearch enters only if `tsvector` recall is measurably short.
+
+**Estimate before work.** *Problem:* an uploaded 100-page PDF can take minutes and
+real money, and a user who cannot see that will abandon it. *Choice:* uploads are
+stored and measured first; time comes from this installation's history (seconds
+per 1k input tokens of past runs), embedding rate and the provider's rate limit.
+*Result:* the user decides with numbers; accuracy of the estimate is tracked in
+[decision 004](docs/decisions/004-any-document.md).
 
 **Verification before streaming.** *Problem:* streaming raw tokens shows claims
 before they are checked. *Choice:* NDJSON, one claim per line, verified when the

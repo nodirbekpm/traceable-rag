@@ -71,7 +71,12 @@ Ikkinchisi birinchisiz ishlamaydi. Aynan shu bog'lanish odatiy RAG demolaridan f
 | Ta'lim / universitet | ichki hujjatlar, nizomlar, baza | "talaba va xodim ma'lumotni qayerdan topadi?" |
 | Davlat xaridlari | tender hujjatlari | "budjet va muddat qancha?" |
 
-## Namoyish sohasi: SEC EDGAR
+## Namoyish sohasi: SEC EDGAR (+ istalgan hujjat)
+
+> **O'zgartirildi 2026-10-03** (docs/decisions/004-any-document.md): EDGAR namoyish va o'lchov
+> korpusi bo'lib qoladi, lekin servis foydalanuvchi yuklagan istalgan hujjatni (PDF, DOCX, HTML,
+> TXT, MD) ham tahlil qiladi. Sabab: portfolio ko'ruvchisi o'z hujjatini sinab ko'rmoqchi bo'ladi;
+> faqat bitta soha "servis" emas, demo bo'lib ko'rinadi.
 
 - **Bepul va rasmiy API** — skraping urushi yo'q, huquqiy savol yo'q
 - **Tuzatishlar rasmiy mavjud** — `8-K` va tuzatilgan versiyasi `8-K/A`. "Hujjat keyinroq tuzatildi" ssenariysi haqiqiy ma'lumotda ko'rsatiladi, sun'iy misolda emas
@@ -171,6 +176,18 @@ Bitta sahifa: chapda hujjat matni (ajratilgan va sitata qilingan joylar rangli) 
 Bu sahifaning skrinshoti portfolio'dagi eng kuchli rasm bo'ladi.
 
 ---
+
+### 4.12 Istalgan hujjatni yuklash (2026-10-03 da qo'shildi)
+- Formatlar: PDF (matn qatlami bor), DOCX, HTML, TXT, MD; 25 MB gacha
+- Yuklangach **tahlil boshlanmaydi**: avval taxmin ko'rsatiladi — sahifa, so'z, model chaqiruvlari,
+  vaqt (soniyada) va narx. Vaqt shu o'rnatmaning o'z tarixidan o'lchanadi (avvalgi run'lar), tarix
+  bo'lmasa standart qiymat; bepul tarif chegarasi kutishlari ham qo'shiladi
+- Foydalanuvchi tasdiqlasa — fonda tahlil, jarayon foizi va qadam nomi ko'rsatiladi
+- Uzun hujjat qismlarga bo'linib o'qiladi; iqtiboslar butun matnda qidiriladi, provenance buzilmaydi
+- Yuklangan hujjatlar uchun umumiy maydonlar: sana, kuchga kirish, muddat, summa, foiz, tomon,
+  shaxs, joy, davomiylik (`schema g1`); EDGAR hujjatlari 8-K maydonlarida qoladi (`s1`)
+- Savolni bitta hujjat bilan cheklash mumkin
+- Skanerlangan PDF (OCR) kirmaydi — matn topilmasa aniq xabar beriladi
 
 # 5. ARXITEKTURA
 
@@ -298,7 +315,8 @@ Har bir kiritilgan texnologiya uchun README'da blok: **muammo → o'lchov → mu
 - Foydalanuvchi autentifikatsiyasi, ko'p ijarachi — keyingi masala
 - React yoki boshqa frontend freymvork (bitta HTML sahifa yetadi)
 - Model fine-tuning
-- Bir nechta soha (faqat EDGAR)
+- ~~Bir nechta soha (faqat EDGAR)~~ — bekor qilindi, 4.12 ga qarang
+- OCR (skanerlangan PDF)
 - Kubernetes, avtomatik miqyoslash
 - Agent'lar, ko'p qadamli reja tuzish
 - Real vaqt oqimi (batch yetadi)

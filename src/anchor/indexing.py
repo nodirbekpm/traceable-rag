@@ -7,10 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from anchor.chunking import STRATEGIES
+from anchor.documents import load_text
 from anchor.embedding import Embedder
 from anchor.models import EMBEDDING_DIMENSIONS, Chunk, SourceDocument
 from anchor.storage import RawStore
-from anchor.text import TEXT_VERSION, html_to_text
+from anchor.text import TEXT_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ def index_document(
             result.skipped_strategies += 1
             continue
         if text is None:
-            text = html_to_text(store.get(document.raw_path))
+            text = load_text(store, document)
         chunks = STRATEGIES[strategy](text)
         vectors = embedder.embed_documents([chunk.text for chunk in chunks])
         session.add_all(

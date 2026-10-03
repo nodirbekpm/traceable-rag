@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from anchor.answer import AskConfig, ask
 from anchor.cache import MemoryCache
 from anchor.config import Settings
+from anchor.documents import load_text
 from anchor.embedding import Embedder
 from anchor.evals.metrics import (
     contains_fact,
@@ -32,7 +33,6 @@ from anchor.models import ExtractedFact, ExtractionRun, SourceDocument
 from anchor.rerank import NoReranker, Reranker
 from anchor.retrieval import MODES, retrieve
 from anchor.storage import RawStore
-from anchor.text import html_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class Corpus:
     def text(self, external_id: str) -> str:
         if external_id not in self._texts:
             document = self.document(external_id)
-            self._texts[external_id] = html_to_text(self._store.get(document.raw_path))
+            self._texts[external_id] = load_text(self._store, document)
         return self._texts[external_id]
 
     def evidence_spans(self, evidence: list[dict[str, str]]) -> dict[str, list[tuple[int, int]]]:
