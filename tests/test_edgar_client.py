@@ -84,3 +84,13 @@ def test_requests_are_spaced_to_respect_the_rate_limit() -> None:
 
     assert len(edgar.requests) == 3
     assert edgar.sleeps == [0.125, 0.125]
+
+
+def test_exhibit_99_documents_are_recognised_by_file_name() -> None:
+    client = FakeEdgar().client(min_interval=0)
+    filing = next(f for f in client.list_filings(CIK) if f.form == "8-K")
+
+    exhibits = client.list_exhibits(filing)
+
+    assert [(e.name, e.doc_type) for e in exhibits] == [("a8-kex991q2.htm", "EX-99.1")]
+    assert exhibits[0].url.endswith("/000032019326000015/a8-kex991q2.htm")

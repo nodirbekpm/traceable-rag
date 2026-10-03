@@ -77,6 +77,10 @@ class SourceDocument(Base):
     supersedes_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("source_document.id"), index=True
     )
+    # An exhibit (e.g. the EX-99.1 press release) points at the filing it is attached to.
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("source_document.id"), index=True
+    )
 
 
 class ExtractionRun(Base):

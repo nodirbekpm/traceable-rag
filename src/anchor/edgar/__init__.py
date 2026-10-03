@@ -1,3 +1,3 @@
-from anchor.edgar.client import EdgarClient, EdgarError, Filing
+from anchor.edgar.client import EdgarClient, EdgarError, Exhibit, Filing
 
-__all__ = ["EdgarClient", "EdgarError", "Filing"]
+__all__ = ["EdgarClient", "EdgarError", "Exhibit", "Filing"]
