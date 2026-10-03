@@ -69,3 +69,36 @@ def test_cost_uses_list_prices_per_million_tokens() -> None:
     settings = Settings(llm_price_input_per_mtok="0.30", llm_price_output_per_mtok="2.50")
 
     assert cost_usd(LLMResult("", 1_000_000, 100_000, "m"), settings) == Decimal("0.55")
+
+
+def test_streaming_yields_text_pieces_and_records_usage() -> None:
+    events = [
+        {"candidates": [{"content": {"parts": [{"text": '{"claim": '}]}}]},
+        {"candidates": [{"content": {"parts": [{"text": "x", "thought": True}]}}]},
+        {
+            "candidates": [{"content": {"parts": [{"text": '"ok"}\n'}]}}],
+            "usageMetadata": {"promptTokenCount": 900, "candidatesTokenCount": 12},
+            "modelVersion": "gemini-test-002",
+        },
+    ]
+    body = "".join(f"data: {json.dumps(event)}\r\n\r\n" for event in events)
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+
+    gemini = client(handler)
+    pieces = list(gemini.stream_text("system", "user"))
+
+    assert pieces == ['{"claim": ', '"ok"}\n']
+    assert seen[0].url.params["alt"] == "sse"
+    assert seen[0].url.path.endswith(":streamGenerateContent")
+    assert gemini.last_usage == LLMResult('{"claim": "ok"}\n', 900, 12, "gemini-test-002")
+
+
+def test_streaming_http_error_is_reported() -> None:
+    gemini = client(lambda request: httpx.Response(429, text="quota exceeded"))
+
+    with pytest.raises(LLMError, match="HTTP 429: quota exceeded"):
+        list(gemini.stream_text("s", "u"))
