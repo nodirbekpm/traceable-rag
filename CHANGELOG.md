@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `python -m anchor.bench`: retrieval latency, EXPLAIN plans, HNSW vs IVFFlat,
   partial-index saving; `HNSW_EF_SEARCH` setting.
 - Case study and portfolio entry drafts in `docs/`.
+- Upload any document (PDF, DOCX, HTML, TXT, MD); time and cost estimate before
+  analysis; background analysis with progress; general field set for uploads;
+  long documents read in parts; questions scoped to one document.
+- Redesigned viewer: three-step guide, drag-and-drop upload, legend, plain-language stats.
+- Gemini calls retry on rate limits; per-share amounts with a "per share" suffix normalize.
 
 ## [0.1.0] - 2026-10-02
 
