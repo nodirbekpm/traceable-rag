@@ -3,102 +3,253 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Anchor Viewer</title>
+<title>Anchor — Verifiable Answers</title>
+<meta name="description" content="Document AI that proves its answers: every value and every cited claim links to the exact sentence it came from.">
 <style>
   :root {
-    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e2e1dc;
-    --accent: #2f5bd3; --verified: #d9f0dd; --review: #fff0c2; --bad: #fbdcdc;
-    --cite: #dbe5ff; --focus: #ffd54d;
+    --bg: #f6f6f3; --panel: #ffffff; --text: #1c1c1a; --muted: #686862; --line: #e3e2dc;
+    --accent: #2c5be0; --accent-soft: #e7edff; --ok: #1f7a3a; --ok-soft: #dcf1e2;
+    --warn: #8a6100; --warn-soft: #fff1c9; --bad: #a32b2b; --bad-soft: #fbe0e0;
+    --cite-soft: #dde6ff; --focus: #ffd34d; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #151514; --panel: #1e1e1c; --text: #ecebe6; --muted: #9b9a93; --line: #34332f;
-      --accent: #7d9cff; --verified: #1f3b25; --review: #4a3d12; --bad: #4a1f1f;
-      --cite: #233056; --focus: #8a6d00;
+      --bg: #141413; --panel: #1d1d1b; --text: #ecebe6; --muted: #9c9b94; --line: #33332f;
+      --accent: #7f9dff; --accent-soft: #232c47; --ok: #7fd396; --ok-soft: #1d3a26;
+      --warn: #f0c75e; --warn-soft: #43380f; --bad: #f39a9a; --bad-soft: #4a2020;
+      --cite-soft: #263257; --focus: #8a6c00; --shadow: none;
     }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
-         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { display: flex; gap: 12px; align-items: center; padding: 12px 16px;
-           border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
-  header h1 { font-size: 16px; margin: 0 8px 0 0; }
-  select, input, button { font: inherit; color: inherit; background: var(--bg);
-                          border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
-  button { cursor: pointer; background: var(--accent); color: #fff; border-color: var(--accent); }
-  main { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); height: calc(100vh - 57px); }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }
-  section { overflow: auto; padding: 16px; }
-  #doc { white-space: pre-wrap; background: var(--panel); border: 1px solid var(--line);
-         border-radius: 8px; padding: 16px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
-  mark { border-radius: 3px; color: inherit; cursor: pointer; }
-  mark.verified { background: var(--verified); }
-  mark.needs_review { background: var(--review); }
-  mark.rejected, mark.hallucinated { background: var(--bad); }
-  mark.cite { background: var(--cite); }
+         font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); padding: 7px 12px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .55; cursor: default; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; background: var(--panel);
+           border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .logo { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: #fff;
+          display: grid; place-items: center; font-weight: 700; }
+  .brand h1 { font-size: 17px; margin: 0; }
+  .tagline { color: var(--muted); }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px 20px 0; }
+  .step { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; box-shadow: var(--shadow); }
+  .step b { display: block; margin-bottom: 2px; }
+  .step .n { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+             background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; margin-right: 6px; }
+  @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
+
+  .layout { display: grid; grid-template-columns: 270px minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; padding: 16px 20px 24px; }
+  @media (max-width: 1200px) { .layout { grid-template-columns: 240px minmax(0, 1fr); } .right { grid-column: 1 / -1; } }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; padding: 12px; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; box-shadow: var(--shadow); }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 10px; }
+  .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 18px 12px; text-align: center; cursor: pointer; transition: .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop strong { display: block; }
+  .doclist { list-style: none; margin: 0; padding: 0; max-height: 46vh; overflow: auto; }
+  .doclist li { padding: 8px 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+  .doclist li:hover { background: var(--bg); }
+  .doclist li.active { background: var(--accent-soft); border-color: var(--accent); }
+  .doclist .group { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+                    padding: 10px 8px 4px; cursor: default; }
+  .doclist .group:hover { background: none; }
+  .title { font-weight: 600; overflow-wrap: anywhere; }
+
+  .estimate { margin-top: 12px; border-radius: 10px; background: var(--accent-soft); padding: 12px; }
+  .estimate .big { font-size: 20px; font-weight: 700; }
+  .progress { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 8px 0 4px; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+  .error { color: var(--bad); margin-top: 8px; }
+
+  .doc-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+  .legend { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); }
+  .chip.verified { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+  .chip.needs_review { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+  .chip.rejected, .chip.hallucinated { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+  .chip.cite { background: var(--cite-soft); border-color: transparent; }
+  #doc { white-space: pre-wrap; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12.5px; line-height: 1.6;
+         max-height: 72vh; overflow: auto; padding: 4px 2px; }
+  mark { color: inherit; border-radius: 3px; padding: 0 1px; cursor: pointer; }
+  mark.verified { background: var(--ok-soft); box-shadow: inset 0 -2px 0 var(--ok); }
+  mark.needs_review { background: var(--warn-soft); box-shadow: inset 0 -2px 0 var(--warn); }
+  mark.rejected, mark.hallucinated { background: var(--bad-soft); }
+  mark.cite { background: var(--cite-soft); box-shadow: inset 0 -2px 0 var(--accent); }
   mark.focus { background: var(--focus); outline: 2px solid var(--focus); }
-  .right { border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 16px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
-  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
-  form { display: flex; gap: 8px; }
-  form input { flex: 1; }
-  .claim { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .empty { color: var(--muted); padding: 30px 8px; text-align: center; }
+
+  form.ask { display: flex; gap: 8px; }
+  form.ask input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
+  .scope { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .examples { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .examples button { font-size: 12px; padding: 3px 9px; border-radius: 999px; }
+  .claim { padding: 9px 0; border-bottom: 1px solid var(--line); }
   .claim:last-child { border-bottom: 0; }
-  .chip { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 10px;
-          background: var(--cite); cursor: pointer; margin-left: 4px; }
+  .cite-btn { font-size: 12px; padding: 0 7px; margin-left: 6px; border-radius: 999px; background: var(--cite-soft); border: 0; }
+  .notfound { background: var(--bg); border-radius: 8px; padding: 10px; }
+  .stats { margin-top: 10px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .stat { background: var(--bg); border-radius: 8px; padding: 6px 8px; }
+  .stat b { display: block; font-size: 15px; }
+  .trust { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; }
+  td, th { padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
   tr.fact { cursor: pointer; }
   tr.fact:hover { background: var(--bg); }
-  .muted { color: var(--muted); }
-  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font-size: 13px; }
-  .notfound { color: var(--muted); font-style: italic; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 13px; }
+  .history-item { padding: 4px 0; border-bottom: 1px solid var(--line); }
 </style>
 </head>
 <body>
 <header>
-  <h1>Anchor</h1>
-  <select id="docs" aria-label="Document"></select>
-  <span class="muted" id="docinfo"></span>
+  <div class="brand"><div class="logo">A</div><h1>Anchor</h1></div>
+  <div class="tagline">Document AI that proves its answers — every number links to the sentence it came from.</div>
 </header>
-<main>
-  <section><div id="doc" aria-live="polite">Select a document.</div></section>
-  <section class="right">
+
+<section class="steps" aria-label="How it works">
+  <div class="step"><span class="n">1</span><b>Add a document</b><span class="muted">Upload a PDF, Word, HTML or text file — or open a sample SEC filing. You see the time and cost before anything runs.</span></div>
+  <div class="step"><span class="n">2</span><b>Review what was extracted</b><span class="muted">Dates, amounts, parties and people are highlighted in the text. Anything the source does not contain is rejected, not shown as fact.</span></div>
+  <div class="step"><span class="n">3</span><b>Ask a question</b><span class="muted">Each sentence of the answer is checked against its source and linked to it. If the documents don't say, the answer is "not found".</span></div>
+</section>
+
+<div class="layout">
+  <aside class="stack">
     <div class="card">
-      <h2>Ask</h2>
-      <form id="ask">
-        <input id="q" placeholder="e.g. Who was appointed Chief Financial Officer?" minlength="3" required>
-        <button>Ask</button>
-      </form>
-      <div id="answer"></div>
-      <div id="latency" class="muted"></div>
+      <h2>Add a document</h2>
+      <label class="drop" id="drop" tabindex="0">
+        <strong>Drop a file here or click to choose</strong>
+        <span class="muted small">PDF, DOCX, HTML, TXT, MD · up to 25 MB</span>
+        <input type="file" id="file" accept=".pdf,.docx,.html,.htm,.txt,.md" hidden>
+      </label>
+      <div id="upload-panel"></div>
     </div>
     <div class="card">
-      <h2>Extracted facts <span class="muted">(click to locate)</span></h2>
-      <table><thead><tr><th>Field</th><th>Value</th><th>Status</th><th>Conf.</th></tr></thead>
-      <tbody id="facts"></tbody></table>
+      <h2>Documents</h2>
+      <ul class="doclist" id="docs"><li class="empty">Loading…</li></ul>
+    </div>
+  </aside>
+
+  <main class="stack">
+    <div class="card">
+      <div class="doc-head">
+        <div><div class="title" id="doc-title">No document selected</div><div class="muted small" id="doc-meta"></div></div>
+        <div class="legend" aria-label="Legend">
+          <span class="chip verified">Verified in source</span>
+          <span class="chip needs_review">Needs review</span>
+          <span class="chip rejected">Rejected</span>
+          <span class="chip cite">Cited in answer</span>
+        </div>
+      </div>
+      <div id="doc"><div class="empty">Choose a document on the left, or upload your own.</div></div>
+    </div>
+  </main>
+
+  <section class="stack right">
+    <div class="card">
+      <h2>Ask a question</h2>
+      <form class="ask" id="ask">
+        <input type="text" id="q" placeholder="e.g. What is the total fee and when is it due?" minlength="3" required>
+        <button class="primary" id="ask-btn">Ask</button>
+      </form>
+      <label class="scope small"><input type="checkbox" id="scope" checked> Only search the open document</label>
+      <div class="examples" id="examples"></div>
+      <div id="answer"></div>
+      <div id="stats"></div>
+    </div>
+    <div class="card">
+      <h2>Extracted facts <span class="muted" style="text-transform:none;letter-spacing:0">· click one to see where it came from</span></h2>
+      <div id="facts"><div class="empty">Facts appear here after a document is analysed.</div></div>
     </div>
     <div class="card" id="detail" hidden>
-      <h2>Provenance</h2>
+      <h2>Where this value came from</h2>
       <div class="kv" id="detailkv"></div>
-      <h2 style="margin-top:12px">History</h2>
+      <h2 style="margin-top:14px">Version history</h2>
       <div id="history"></div>
     </div>
   </section>
-</main>
+</div>
+
 <script>
 const $ = (id) => document.getElementById(id);
-const state = { docId: null, text: "", facts: [], citations: [], focus: null };
-const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const state = { documents: [], docId: null, text: "", facts: [], citations: [], focus: null, poll: null };
 
-async function api(path) {
-  const response = await fetch(path);
-  if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
-  return response.json();
+const FIELD_NAMES = {
+  report_date: "Report date", item_number: "8-K item", fiscal_period: "Fiscal period", revenue: "Revenue",
+  net_income: "Net income", eps_diluted: "Diluted EPS", dividend_per_share: "Dividend per share",
+  transaction_amount: "Transaction amount", counterparty: "Counterparty", agreement_date: "Agreement date",
+  officer_name: "Officer / director", officer_title: "Title", officer_change_type: "Change",
+  officer_effective_date: "Effective date", document_date: "Document date", effective_date: "Effective date",
+  deadline: "Deadline", monetary_amount: "Amount", percentage: "Percentage", party: "Party",
+  person: "Person", location: "Location", duration: "Duration",
+};
+const STATUS_TEXT = {
+  verified: "Verified in source", needs_review: "Needs review", rejected: "Rejected", hallucinated: "Not in source",
+};
+const EXAMPLES = {
+  upload: ["What are the key amounts and dates?", "Who are the parties?", "What are the termination terms?"],
+  filing: ["Who was appointed, and when does it take effect?", "What was revenue for the quarter?", "What did the company agree to?"],
+};
+
+async function api(path, options) {
+  const response = await fetch(path, options);
+  const body = response.headers.get("content-type")?.includes("json") ? await response.json() : null;
+  if (!response.ok) throw new Error(body?.detail || `Request failed (HTTP ${response.status})`);
+  return body;
 }
 
-function render() {
-  // Spans: current facts plus citations for this document; the focused one wins.
+const fmtSeconds = (s) => (s < 60 ? `${s} seconds` : `${Math.round(s / 60)} min ${s % 60 ? (s % 60) + " s" : ""}`);
+const fmtMs = (v) => (v == null ? "—" : v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(1)} s`);
+const docLabel = (d) => d.title || `${d.publisher} · ${d.doc_type}`;
+
+// ---------- documents ----------
+async function loadDocuments(selectId) {
+  state.documents = await api("/documents");
+  const uploads = state.documents.filter((d) => d.doc_type === "upload");
+  const filings = state.documents.filter((d) => d.doc_type !== "upload" && !d.doc_type.startsWith("EX-"));
+  const exhibits = state.documents.filter((d) => d.doc_type.startsWith("EX-"));
+  const item = (d) => `<li data-id="${d.id}" class="${d.id === state.docId ? "active" : ""}">
+      <div class="title">${esc(docLabel(d))}</div>
+      <div class="muted small">${d.doc_type === "upload" ? esc(d.media_type.split("/").pop().replace("vnd.openxmlformats-officedocument.wordprocessingml.document", "docx")) : esc(d.doc_type)}
+      ${d.published_at ? " · " + d.published_at.slice(0, 10) : ""}${d.supersedes_id ? " · amends an earlier filing" : ""}</div></li>`;
+  const group = (name, list) => (list.length ? `<li class="group">${name}</li>` + list.map(item).join("") : "");
+  $("docs").innerHTML = group("Your uploads", uploads) + group("Sample: SEC 8-K filings", filings) +
+    group("Sample: press releases", exhibits) || `<li class="empty">No documents yet — upload one above.</li>`;
+  const target = selectId || state.docId || (uploads[0] || filings[0] || state.documents[0])?.id;
+  if (target) await openDocument(target);
+}
+
+async function openDocument(id) {
+  state.docId = id;
+  state.focus = null;
+  state.citations = [];
+  document.querySelectorAll("#docs li[data-id]").forEach((li) => li.classList.toggle("active", li.dataset.id === id));
+  const doc = state.documents.find((d) => d.id === id);
+  $("doc-title").textContent = doc ? docLabel(doc) : "";
+  $("doc-meta").textContent = doc ? [doc.doc_type === "upload" ? "Uploaded document" : doc.publisher,
+    doc.published_at?.slice(0, 10), doc.supersedes_id ? "amends an earlier filing" : ""].filter(Boolean).join(" · ") : "";
+  $("examples").innerHTML = (EXAMPLES[doc?.doc_type === "upload" ? "upload" : "filing"])
+    .map((q) => `<button type="button">${esc(q)}</button>`).join("");
+  $("detail").hidden = true;
+  const [text, facts] = await Promise.all([api(`/documents/${id}/text`), api(`/documents/${id}/facts`)]);
+  state.text = text.text;
+  state.facts = facts;
+  renderFacts();
+  renderDoc();
+}
+
+function renderDoc() {
+  if (!state.text) { $("doc").innerHTML = `<div class="empty">This document has no text.</div>`; return; }
   const spans = [
     ...state.facts.filter((f) => f.span_start != null)
       .map((f) => ({ start: f.span_start, end: f.span_end, cls: f.validation_status, id: f.id })),
@@ -106,105 +257,180 @@ function render() {
       .map((c) => ({ start: c.span_start, end: c.span_end, cls: "cite" })),
   ];
   if (state.focus) spans.push({ ...state.focus, cls: "focus" });
-  spans.sort((a, b) => a.start - b.start || (b.cls === "focus") - (a.cls === "focus"));
+  spans.sort((a, b) => a.start - b.start || (b.cls === "focus") - (a.cls === "focus") || (b.cls === "cite") - (a.cls === "cite"));
   let html = "", pos = 0;
   for (const s of spans) {
-    if (s.start < pos) continue; // overlapping spans: keep the first
+    if (s.start < pos) continue;
     html += esc(state.text.slice(pos, s.start));
-    const attr = s.id ? ` data-fact="${s.id}"` : "";
-    html += `<mark class="${s.cls}"${attr}>${esc(state.text.slice(s.start, s.end))}</mark>`;
+    const title = s.cls === "cite" ? "Cited in the answer" : STATUS_TEXT[s.cls] || "";
+    html += `<mark class="${s.cls}"${s.id ? ` data-fact="${s.id}"` : ""} title="${title}">${esc(state.text.slice(s.start, s.end))}</mark>`;
     pos = s.end;
   }
-  html += esc(state.text.slice(pos));
-  $("doc").innerHTML = html;
-  const focused = $("doc").querySelector("mark.focus");
-  if (focused) focused.scrollIntoView({ block: "center", behavior: "smooth" });
+  $("doc").innerHTML = html + esc(state.text.slice(pos));
+  $("doc").querySelector("mark.focus")?.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
-async function loadDocument(id) {
-  state.docId = id;
-  state.focus = null;
-  $("docs").value = id;
-  const [text, facts] = await Promise.all([api(`/documents/${id}/text`), api(`/documents/${id}/facts`)]);
-  state.text = text.text;
-  state.facts = facts;
-  const doc = state.documents.find((d) => d.id === id);
-  $("docinfo").textContent = doc ? `${doc.publisher} · ${doc.doc_type} · ${(doc.published_at || "").slice(0, 10)}` +
-    (doc.supersedes_id ? " · amends an earlier filing" : "") : "";
-  $("facts").innerHTML = facts.map((f) => `<tr class="fact" data-fact="${f.id}">
-      <td>${esc(f.field_name)}${f.entity_id ? `<div class="muted">${esc(f.entity_id)}</div>` : ""}</td>
-      <td>${esc(f.value_raw || "")}${f.value_normalized && f.value_normalized !== f.value_raw ?
-        `<div class="muted">${esc(f.value_normalized)} ${esc(f.unit || "")}</div>` : ""}</td>
-      <td>${esc(f.validation_status)}</td><td>${f.confidence ?? ""}</td></tr>`).join("") ||
-    `<tr><td colspan="4" class="muted">No facts extracted yet.</td></tr>`;
-  render();
+function renderFacts() {
+  if (!state.facts.length) {
+    const doc = state.documents.find((d) => d.id === state.docId);
+    $("facts").innerHTML = `<div class="empty">${doc?.doc_type === "upload" ? "Not analysed yet." : "No facts extracted for this document yet."}</div>`;
+    return;
+  }
+  const order = { verified: 0, needs_review: 1, rejected: 2, hallucinated: 3 };
+  const rows = [...state.facts].sort((a, b) => order[a.validation_status] - order[b.validation_status]);
+  $("facts").innerHTML = `<table><thead><tr><th>What</th><th>Value</th><th>Status</th></tr></thead><tbody>` +
+    rows.map((f) => `<tr class="fact" data-fact="${f.id}">
+      <td>${esc(FIELD_NAMES[f.field_name] || f.field_name)}${f.entity_id ? `<div class="muted small">${esc(f.entity_id)}</div>` : ""}</td>
+      <td>${esc(f.value_raw)}${f.value_normalized && f.value_normalized !== f.value_raw ? `<div class="muted small">= ${esc(f.value_normalized)} ${esc(f.unit || "")}</div>` : ""}</td>
+      <td><span class="chip ${f.validation_status}">${STATUS_TEXT[f.validation_status] || f.validation_status}</span></td></tr>`).join("") +
+    `</tbody></table>`;
 }
 
 async function showFact(id) {
   const fact = state.facts.find((f) => f.id === id);
   if (!fact) return;
-  if (fact.span_start != null) { state.focus = { start: fact.span_start, end: fact.span_end }; render(); }
+  if (fact.span_start != null) { state.focus = { start: fact.span_start, end: fact.span_end }; renderDoc(); }
   const [run, history] = await Promise.all([api(`/runs/${fact.run_id}`), api(`/facts/${id}/history`)]);
   const rows = {
-    "Model": `${run.model_name} (${run.model_version})`,
-    "Prompt / schema / text": `${run.prompt_version} / ${run.schema_version} / ${run.text_version}`,
-    "Status": fact.validation_status + (fact.validation_reason ? ` — ${fact.validation_reason}` : ""),
+    "Value": `${fact.value_raw}${fact.value_normalized && fact.value_normalized !== fact.value_raw ? ` (= ${fact.value_normalized} ${fact.unit || ""})` : ""}`,
+    "Status": (STATUS_TEXT[fact.validation_status] || fact.validation_status) + (fact.validation_reason ? ` — ${fact.validation_reason}` : ""),
+    "Source sentence": fact.source_excerpt || "— (the model's quote was not found in the document)",
+    "Position in text": fact.span_start != null ? `characters ${fact.span_start}–${fact.span_end}` : "—",
     "Confidence": fact.confidence ?? "—",
-    "Span": fact.span_start != null ? `${fact.span_start}–${fact.span_end}` : "none (not found in source)",
-    "Run cost": run.cost_usd != null ? `$${run.cost_usd}` : "—",
+    "Model": `${run.model_name} (${run.model_version})`,
+    "Versions": `prompt ${run.prompt_version} · schema ${run.schema_version} · text ${run.text_version}`,
+    "Cost of this run": run.cost_usd != null ? `$${Number(run.cost_usd).toFixed(4)} at list price` : "—",
   };
-  $("detailkv").innerHTML = Object.entries(rows).map(([k, v]) => `<div class="muted">${k}</div><div>${esc(String(v))}</div>`).join("");
-  $("history").innerHTML = history.map((h) => `<div class="claim">${esc(h.value_raw || "")}
-      <span class="muted">· ${h.is_current ? "current" : "superseded"} · ${h.created_at.slice(0, 10)}</span></div>`).join("");
+  $("detailkv").innerHTML = Object.entries(rows).map(([k, v]) => `<div class="muted">${k}</div><div>${esc(v)}</div>`).join("");
+  $("history").innerHTML = history.length > 1
+    ? history.map((h) => `<div class="history-item">${esc(h.value_raw)} <span class="muted small">· ${h.is_current ? "current" : "replaced"} · ${h.created_at.slice(0, 10)}${h.document_id !== fact.document_id ? " · from another filing" : ""}</span></div>`).join("")
+    : `<div class="muted">No earlier versions — this is the first value recorded.</div>`;
   $("detail").hidden = false;
+  $("detail").scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
+// ---------- upload → estimate → analyse ----------
+async function uploadFile(file) {
+  const panel = $("upload-panel");
+  panel.innerHTML = `<div class="estimate">Reading <b>${esc(file.name)}</b>…</div>`;
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const body = await api("/documents", { method: "POST", body: form });
+    await loadDocuments(body.document.id);
+    if (body.status.state === "ready") {
+      panel.innerHTML = `<div class="estimate">This file was already analysed — showing the existing results.</div>`;
+      return;
+    }
+    showEstimate(body.document, body.estimate);
+  } catch (error) {
+    panel.innerHTML = `<div class="error">${esc(error.message)}</div>`;
+  }
+}
+
+function showEstimate(doc, e) {
+  $("upload-panel").innerHTML = `<div class="estimate">
+      <div class="small muted">${esc(doc.title)}</div>
+      <div>${e.pages} page${e.pages === 1 ? "" : "s"} · ${e.words.toLocaleString()} words</div>
+      <div class="big">≈ ${fmtSeconds(e.seconds)}</div>
+      <div class="small muted">≈ $${e.cost_usd.toFixed(4)} at list price (free tier: $0) · ${e.model_calls} model call${e.model_calls === 1 ? "" : "s"} · ${esc(e.basis)}</div>
+      ${e.notes.map((n) => `<div class="small">• ${esc(n)}</div>`).join("")}
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="primary" id="start">Analyse now</button><button id="later">Later</button></div>
+    </div>`;
+  $("start").onclick = () => startAnalysis(doc.id, e.seconds);
+  $("later").onclick = () => ($("upload-panel").innerHTML = "");
+}
+
+async function startAnalysis(id, expected) {
+  $("upload-panel").innerHTML = `<div class="estimate"><b id="step">Starting…</b>
+      <div class="progress"><div id="bar"></div></div><div class="small muted" id="eta"></div></div>`;
+  try { await api(`/documents/${id}/analyze`, { method: "POST" }); }
+  catch (error) { $("upload-panel").innerHTML = `<div class="error">${esc(error.message)}</div>`; return; }
+  const started = Date.now();
+  clearInterval(state.poll);
+  state.poll = setInterval(async () => {
+    const s = await api(`/documents/${id}/status`);
+    const elapsed = Math.round((Date.now() - started) / 1000);
+    const share = Math.max(s.progress || 0, Math.min(0.95, elapsed / Math.max(expected, 1)));
+    $("bar").style.width = `${Math.round(share * 100)}%`;
+    $("step").textContent = s.step || "Working…";
+    $("eta").textContent = `${elapsed} s elapsed · estimate ${expected} s`;
+    if (s.state === "ready" || s.state === "failed") {
+      clearInterval(state.poll);
+      $("upload-panel").innerHTML = s.state === "ready"
+        ? `<div class="estimate">✓ Done in ${s.seconds ?? elapsed} s. Facts are highlighted — now ask a question.</div>`
+        : `<div class="error">Analysis failed: ${esc(s.error)}</div>`;
+      if (s.state === "ready" && state.docId === id) await openDocument(id);
+    }
+  }, 1000);
+}
+
+// ---------- ask ----------
 async function focusCitation(citation) {
-  if (citation.document_id !== state.docId) await loadDocument(citation.document_id);
+  if (citation.document_id !== state.docId) await openDocument(citation.document_id);
   state.focus = { start: citation.span_start, end: citation.span_end };
-  render();
+  renderDoc();
 }
 
 function ask(question) {
-  $("answer").innerHTML = "";
-  $("latency").textContent = "Searching…";
+  $("answer").innerHTML = `<div class="muted" style="margin-top:10px">Searching the documents…</div>`;
+  $("stats").innerHTML = "";
+  $("ask-btn").disabled = true;
   state.citations = [];
-  const source = new EventSource(`/ask?q=${encodeURIComponent(question)}`);
+  renderDoc();
+  const params = new URLSearchParams({ q: question });
+  if ($("scope").checked && state.docId) params.set("document_id", state.docId);
+  const source = new EventSource(`/ask?${params}`);
+  let first = true;
+  source.addEventListener("sources", () => { $("answer").innerHTML = `<div class="muted" style="margin-top:10px">Writing and checking the answer…</div>`; });
   source.addEventListener("claim", (e) => {
     const event = JSON.parse(e.data);
+    if (first) { $("answer").innerHTML = ""; first = false; }
     const n = state.citations.push(event.citation);
     const div = document.createElement("div");
     div.className = "claim";
-    div.innerHTML = `${esc(event.text)}<span class="chip" title="${esc(event.citation.quote)}">[${n}] ${esc(event.citation.doc_type)}</span>`;
-    div.querySelector(".chip").onclick = () => focusCitation(event.citation);
+    div.innerHTML = `${esc(event.text)}<button class="cite-btn" title="${esc(event.citation.quote)}">[${n}] source</button>`;
+    div.querySelector("button").onclick = () => focusCitation(event.citation);
     $("answer").appendChild(div);
-    if (n === 1) focusCitation(event.citation);
+    if (n === 1) focusCitation(event.citation); else renderDoc();
   });
-  source.addEventListener("not_found", (e) => {
-    $("answer").innerHTML = `<div class="notfound">${esc(JSON.parse(e.data).text)}</div>`;
+  source.addEventListener("not_found", () => {
+    $("answer").innerHTML = `<div class="notfound" style="margin-top:10px"><b>Not found.</b> <span class="muted">The documents don't contain a supported answer, so none is given.</span></div>`;
   });
   source.addEventListener("done", (e) => {
     const d = JSON.parse(e.data);
-    const ms = (v) => (v == null ? "—" : `${Math.round(v)} ms`);
-    $("latency").textContent = `retrieval ${ms(d.latency_retrieval_ms)} · rerank ${ms(d.latency_rerank_ms)} · ` +
-      `first claim ${ms(d.latency_ttft_ms)} · total ${ms(d.latency_total_ms)} · $${d.cost_usd}` +
-      (d.cache_hit ? " · cached" : "") + (d.claims_dropped ? ` · ${d.claims_dropped} unsupported claim(s) dropped` : "");
+    $("stats").innerHTML = `<div class="stats">
+        <div class="stat"><b>${fmtMs(d.latency_retrieval_ms)}</b><span class="muted small">to find sources</span></div>
+        <div class="stat"><b>${fmtMs(d.latency_ttft_ms)}</b><span class="muted small">to first checked sentence</span></div>
+        <div class="stat"><b>${d.claims}</b><span class="muted small">sentence${d.claims === 1 ? "" : "s"} verified</span></div>
+        <div class="stat"><b>${d.cache_hit ? "cached" : "$" + Number(d.cost_usd).toFixed(4)}</b><span class="muted small">${d.cache_hit ? "answered from cache" : "cost at list price"}</span></div>
+      </div>
+      <div class="trust">${d.claims_dropped ? `${d.claims_dropped} sentence${d.claims_dropped === 1 ? " was" : "s were"} removed because the cited source did not support ${d.claims_dropped === 1 ? "it" : "them"}. ` : ""}Click a [source] to see the exact sentence.</div>`;
+    $("ask-btn").disabled = false;
     source.close();
   });
-  source.onerror = () => { $("latency").textContent = "The request failed. Is GEMINI_API_KEY set?"; source.close(); };
+  source.onerror = () => {
+    $("answer").innerHTML = `<div class="error">The question could not be answered. Is the language model key configured?</div>`;
+    $("ask-btn").disabled = false;
+    source.close();
+  };
 }
 
+// ---------- wiring ----------
+$("docs").addEventListener("click", (e) => { const li = e.target.closest("li[data-id]"); if (li) openDocument(li.dataset.id); });
 $("doc").addEventListener("click", (e) => { const id = e.target.dataset?.fact; if (id) showFact(id); });
 $("facts").addEventListener("click", (e) => { const row = e.target.closest("tr[data-fact]"); if (row) showFact(row.dataset.fact); });
-$("docs").addEventListener("change", (e) => loadDocument(e.target.value));
+$("examples").addEventListener("click", (e) => { if (e.target.tagName === "BUTTON") { $("q").value = e.target.textContent; ask(e.target.textContent); } });
 $("ask").addEventListener("submit", (e) => { e.preventDefault(); ask($("q").value); });
+$("file").addEventListener("change", (e) => e.target.files[0] && uploadFile(e.target.files[0]));
+const drop = $("drop");
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") $("file").click(); });
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => e.dataTransfer.files[0] && uploadFile(e.dataTransfer.files[0]));
 
-(async () => {
-  state.documents = await api("/documents");
-  $("docs").innerHTML = state.documents.map((d) =>
-    `<option value="${d.id}">${esc(d.publisher)} · ${esc(d.doc_type)} · ${(d.published_at || "").slice(0, 10)}</option>`).join("");
-  if (state.documents.length) loadDocument(state.documents[0].id);
-})();
+loadDocuments().catch((error) => { $("docs").innerHTML = `<li class="error">${esc(error.message)}</li>`; });
 </script>
 </body>
 </html>
