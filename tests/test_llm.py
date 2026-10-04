@@ -156,3 +156,31 @@ def test_retries_stop_after_the_limit() -> None:
         )
 
     assert len(SLEEPS) == 3
+
+
+def test_long_retry_hints_are_capped() -> None:
+    hint = {"error": {"details": [{"retryDelay": "40000s"}]}}
+    replies = iter([httpx.Response(429, json=hint), httpx.Response(200, json=REPLY)])
+
+    client(lambda request: next(replies), max_retries=1).generate_json("s", "u", {})
+
+    assert SLEEPS == [120.0]
+
+
+def test_daily_quota_fails_at_once_with_a_clear_message() -> None:
+    daily = {
+        "error": {
+            "code": 429,
+            "details": [
+                {"violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]},
+                {"retryDelay": "30000s"},
+            ],
+        }
+    }
+
+    with pytest.raises(LLMError, match="daily free-tier quota"):
+        client(lambda request: httpx.Response(429, json=daily), max_retries=4).generate_json(
+            "s", "u", {}
+        )
+
+    assert SLEEPS == []

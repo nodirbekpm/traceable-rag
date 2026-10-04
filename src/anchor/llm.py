@@ -26,15 +26,33 @@ class LLMError(RuntimeError):
     pass
 
 
+# Never wait longer than this for one retry: a longer hint means the quota is gone
+# for hours, and the caller should hear that instead of a silent hang.
+MAX_RETRY_DELAY_SECONDS = 120.0
+
+
+def _details(response: httpx.Response) -> list[dict]:
+    try:
+        return list(response.json()["error"].get("details", []))
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return []
+
+
+def daily_quota_exhausted(response: httpx.Response) -> bool:
+    """True when a 429 names a per-day quota, which no short wait will fix."""
+    return response.status_code == 429 and any(
+        "perday" in str(violation.get("quotaId", "")).lower()
+        for detail in _details(response)
+        for violation in detail.get("violations", [])
+    )
+
+
 def retry_delay(response: httpx.Response, attempt: int) -> float:
     """Seconds to wait: the provider's RetryInfo hint when given, else exponential backoff."""
-    try:
-        for detail in response.json()["error"].get("details", []):
-            if match := re.fullmatch(r"([\d.]+)s", str(detail.get("retryDelay", ""))):
-                return float(match.group(1)) + 1
-    except (ValueError, KeyError, TypeError, AttributeError):
-        pass
-    return float(2 ** (attempt + 2))
+    for detail in _details(response):
+        if match := re.fullmatch(r"([\d.]+)s", str(detail.get("retryDelay", ""))):
+            return min(float(match.group(1)) + 1, MAX_RETRY_DELAY_SECONDS)
+    return min(float(2 ** (attempt + 2)), MAX_RETRY_DELAY_SECONDS)
 
 
 @dataclass(frozen=True)
@@ -82,6 +100,11 @@ class GeminiClient:
     def _should_retry(self, response: httpx.Response, attempt: int) -> bool:
         if response.status_code not in RETRYABLE_STATUS or attempt >= self._max_retries:
             return False
+        if daily_quota_exhausted(response):
+            raise LLMError(
+                "The model's daily free-tier quota is used up; it resets once a day. "
+                "Try again later or use a paid key."
+            )
         self._sleep(retry_delay(response, attempt))
         return True
 
