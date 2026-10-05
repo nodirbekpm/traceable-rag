@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/nodirbekpm/traceable-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/nodirbekpm/traceable-rag/actions/workflows/ci.yml)
 
+![Anchor viewer: an amended SEC filing with extracted values highlighted in the text and each value marked as verified in the source](docs/images/viewer.png)
+
 **Traceable RAG over documents.** Every extracted value and every cited claim
 points back to an exact character span in the source document — and anything
 that cannot be traced is not shown.
