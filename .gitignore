@@ -31,13 +31,3 @@ docker-compose.override.yml
 *.swp
 .DS_Store
 Thumbs.db
-
-# Local editor and assistant settings
-.claude/
-CLAUDE.md
-.githooks/
-
-# Local working notes, not part of the public project
-private/
-TZ.md
-docs/STATUS.md
