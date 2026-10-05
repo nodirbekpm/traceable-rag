@@ -111,6 +111,18 @@
   tr.fact:hover { background: var(--bg); }
   .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 13px; }
   .history-item { padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .doc-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  .doc-actions select { border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; background: var(--bg); }
+  button.danger { color: var(--bad); }
+  button.danger.armed { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .badge { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 4px; }
+  .change { display: grid; grid-template-columns: 74px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .change:last-child { border-bottom: 0; }
+  .change .kind { font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .change.changed .kind { color: var(--warn); }
+  .change.added .kind { color: var(--ok); }
+  .change.removed .kind { color: var(--bad); }
+  .strike { text-decoration: line-through; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -145,7 +157,15 @@
   <main class="stack">
     <div class="card">
       <div class="doc-head">
-        <div><div class="title" id="doc-title">No document selected</div><div class="muted small" id="doc-meta"></div></div>
+        <div>
+          <div class="title" id="doc-title">No document selected</div><div class="muted small" id="doc-meta"></div>
+          <div class="doc-actions" id="doc-actions" hidden>
+            <select id="versions" aria-label="Version"></select>
+            <button type="button" id="new-version">Upload new version</button>
+            <input type="file" id="version-file" accept=".pdf,.docx,.html,.htm,.txt,.md" hidden>
+            <button type="button" class="danger" id="delete">Delete</button>
+          </div>
+        </div>
         <div class="legend" aria-label="Legend">
           <span class="chip verified">Verified in source</span>
           <span class="chip needs_review">Needs review</span>
@@ -168,6 +188,10 @@
       <div class="examples" id="examples"></div>
       <div id="answer"></div>
       <div id="stats"></div>
+    </div>
+    <div class="card" id="changes-card" hidden>
+      <h2>What changed since version <span id="changes-from"></span></h2>
+      <div id="changes"></div>
     </div>
     <div class="card">
       <h2>Extracted facts <span class="muted" style="text-transform:none;letter-spacing:0">· click one to see where it came from</span></h2>
@@ -218,11 +242,11 @@ const docLabel = (d) => d.title || `${d.publisher} · ${d.doc_type}`;
 // ---------- documents ----------
 async function loadDocuments(selectId) {
   state.documents = await api("/documents");
-  const uploads = state.documents.filter((d) => d.doc_type === "upload");
+  const uploads = state.documents.filter((d) => d.doc_type === "upload" && d.is_latest);
   const filings = state.documents.filter((d) => d.doc_type !== "upload" && !d.doc_type.startsWith("EX-"));
   const exhibits = state.documents.filter((d) => d.doc_type.startsWith("EX-"));
   const item = (d) => `<li data-id="${d.id}" class="${d.id === state.docId ? "active" : ""}">
-      <div class="title">${esc(docLabel(d))}</div>
+      <div class="title">${esc(docLabel(d))}${d.version > 1 ? `<span class="badge">v${d.version}</span>` : ""}</div>
       <div class="muted small">${d.doc_type === "upload" ? esc(d.media_type.split("/").pop().replace("vnd.openxmlformats-officedocument.wordprocessingml.document", "docx")) : esc(d.doc_type)}
       ${d.published_at ? " · " + d.published_at.slice(0, 10) : ""}${d.supersedes_id ? " · amends an earlier filing" : ""}</div></li>`;
   const group = (name, list) => (list.length ? `<li class="group">${name}</li>` + list.map(item).join("") : "");
@@ -244,11 +268,46 @@ async function openDocument(id) {
   $("examples").innerHTML = (EXAMPLES[doc?.doc_type === "upload" ? "upload" : "filing"])
     .map((q) => `<button type="button">${esc(q)}</button>`).join("");
   $("detail").hidden = true;
-  const [text, facts] = await Promise.all([api(`/documents/${id}/text`), api(`/documents/${id}/facts`)]);
+  await renderVersionControls(doc);
+  // An older upload version has only historical facts; show them rather than an empty list.
+  const historical = doc?.doc_type === "upload" && doc.is_latest === false;
+  const [text, facts] = await Promise.all([api(`/documents/${id}/text`), api(`/documents/${id}/facts?current=${!historical}`)]);
   state.text = text.text;
   state.facts = facts;
   renderFacts();
   renderDoc();
+  await renderChanges(doc);
+}
+
+async function renderVersionControls(doc) {
+  const isUpload = doc?.doc_type === "upload";
+  $("doc-actions").hidden = !isUpload;
+  $("delete").classList.remove("armed");
+  $("delete").textContent = "Delete";
+  if (!isUpload) return;
+  const versions = await api(`/documents/${doc.id}/versions`);
+  $("versions").innerHTML = versions.map((v) =>
+    `<option value="${v.id}" ${v.id === doc.id ? "selected" : ""}>Version ${v.version}${v.is_latest ? " (latest)" : ""} · ${esc(v.title || "")}</option>`).join("");
+  $("versions").hidden = versions.length < 2;
+  $("new-version").disabled = !versions.find((v) => v.id === doc.id)?.is_latest;
+  $("new-version").title = $("new-version").disabled ? "Open the latest version to add a new one" : "";
+}
+
+async function renderChanges(doc) {
+  if (!doc?.supersedes_id) { $("changes-card").hidden = true; return; }
+  const body = await api(`/documents/${doc.id}/changes`);
+  $("changes-from").textContent = String(Math.max(1, (doc.version || 2) - 1));
+  $("changes-card").hidden = false;
+  if (!body.changes.length) {
+    const analysed = state.facts.length > 0;
+    $("changes").innerHTML = `<div class="muted">${analysed ? "No extracted value changed." : "Analyse this version to compare it with the previous one."}</div>`;
+    return;
+  }
+  const value = (c) => c.change === "changed" ? `<span class="strike">${esc(c.before)}</span> → <b>${esc(c.after)}</b>`
+    : c.change === "added" ? `<b>${esc(c.after)}</b>` : `<span class="strike">${esc(c.before)}</span>`;
+  $("changes").innerHTML = body.changes.map((c) => `<div class="change ${c.change}" data-fact="${c.fact_id}">
+      <span class="kind">${c.change}</span>
+      <span>${esc(FIELD_NAMES[c.field] || c.field)}${c.entity ? ` <span class="muted small">· ${esc(c.entity)}</span>` : ""}<br>${value(c)}</span></div>`).join("");
 }
 
 function renderDoc() {
@@ -313,6 +372,47 @@ async function showFact(id) {
 }
 
 // ---------- upload → estimate → analyse ----------
+async function uploadVersion(file) {
+  const panel = $("upload-panel");
+  panel.innerHTML = `<div class="estimate">Reading <b>${esc(file.name)}</b> as a new version…</div>`;
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const body = await api(`/documents/${state.docId}/versions`, { method: "POST", body: form });
+    await loadDocuments(body.document.id);
+    showEstimate(body.document, body.estimate);
+    panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } catch (error) {
+    panel.innerHTML = `<div class="error">${esc(error.message)}</div>`;
+  }
+}
+
+async function deleteDocument() {
+  const button = $("delete");
+  if (!button.classList.contains("armed")) {
+    button.classList.add("armed");
+    button.textContent = "Click again to delete all versions";
+    setTimeout(() => { button.classList.remove("armed"); button.textContent = "Delete"; }, 4000);
+    return;
+  }
+  try {
+    await api(`/documents/${state.docId}`, { method: "DELETE" });
+    state.docId = null;
+    state.text = "";
+    state.facts = [];
+    $("upload-panel").innerHTML = `<div class="estimate">Deleted, including every earlier version.</div>`;
+    $("doc").innerHTML = `<div class="empty">Choose a document on the left, or upload your own.</div>`;
+    $("doc-actions").hidden = true;
+    $("changes-card").hidden = true;
+    $("doc-title").textContent = "No document selected";
+    $("doc-meta").textContent = "";
+    renderFacts();
+    await loadDocuments();
+  } catch (error) {
+    $("upload-panel").innerHTML = `<div class="error">${esc(error.message)}</div>`;
+  }
+}
+
 async function uploadFile(file) {
   const panel = $("upload-panel");
   panel.innerHTML = `<div class="estimate">Reading <b>${esc(file.name)}</b>…</div>`;
@@ -427,6 +527,11 @@ $("facts").addEventListener("click", (e) => { const row = e.target.closest("tr[d
 $("examples").addEventListener("click", (e) => { if (e.target.tagName === "BUTTON") { $("q").value = e.target.textContent; ask(e.target.textContent); } });
 $("ask").addEventListener("submit", (e) => { e.preventDefault(); ask($("q").value); });
 $("file").addEventListener("change", (e) => e.target.files[0] && uploadFile(e.target.files[0]));
+$("new-version").addEventListener("click", () => $("version-file").click());
+$("version-file").addEventListener("change", (e) => { if (e.target.files[0]) uploadVersion(e.target.files[0]); e.target.value = ""; });
+$("delete").addEventListener("click", deleteDocument);
+$("versions").addEventListener("change", (e) => openDocument(e.target.value));
+$("changes").addEventListener("click", (e) => { const row = e.target.closest("[data-fact]"); if (row) showFact(row.dataset.fact); });
 const drop = $("drop");
 drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") $("file").click(); });
 ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
