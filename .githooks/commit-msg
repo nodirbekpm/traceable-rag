@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-# Har qanday AI attribution trailerini commit xabaridan olib tashlaydi.
-msg_file="$1"
-tmp="$(mktemp)"
-grep -v -i -E '^(Co-Authored-By: *Claude|Claude-Session:|.*Generated with \[?Claude Code)' "$msg_file" > "$tmp"
-# oxiridagi bo'sh qatorlarni tozalash
-awk 'BEGIN{RS="";ORS="\n\n"}1' "$tmp" | sed -e :a -e '/^\n*$/{$d;N;};/\n$/ba' > "$msg_file"
-rm -f "$tmp"
