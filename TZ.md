@@ -188,6 +188,8 @@ Bu sahifaning skrinshoti portfolio'dagi eng kuchli rasm bo'ladi.
   shaxs, joy, davomiylik (`schema g1`); EDGAR hujjatlari 8-K maydonlarida qoladi (`s1`)
 - Savolni bitta hujjat bilan cheklash mumkin
 - Skanerlangan PDF (OCR) kirmaydi — matn topilmasa aniq xabar beriladi
+- Yuklangan faylning yangi versiyasi va versiyalar farqi; foydalanuvchi o'z yuklagan faylini
+  o'chira oladi, EDGAR hujjatlari o'chirilmaydi (docs/decisions/005)
 
 # 5. ARXITEKTURA
 

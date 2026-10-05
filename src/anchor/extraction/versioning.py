@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from anchor.extraction.schema import UPLOAD_DOC_TYPE
 from anchor.models import ExtractedFact, ExtractionRun, SourceDocument
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,27 @@ def _pair(
             continue
         same = [c for c in candidates if c.value_normalized == fact.value_normalized]
         pairs.append((fact, same[0] if same else None))
+
+    # Models label the same value differently between runs ("initial term start" vs
+    # "term beginning date"). A leftover fact with the same field and the same value
+    # is the same fact, whatever its label.
+    taken = {successor.id for _, successor in pairs if successor is not None}
+    for index, (fact, successor) in enumerate(pairs):
+        if successor is not None or fact.value_normalized is None:
+            continue
+        match = next(
+            (
+                c
+                for c in new
+                if c.id not in taken
+                and c.field_name == fact.field_name
+                and c.value_normalized == fact.value_normalized
+            ),
+            None,
+        )
+        if match is not None:
+            pairs[index] = (fact, match)
+            taken.add(match.id)
     return pairs
 
 
@@ -161,8 +183,52 @@ def link_amendment(session: Session, amendment: SourceDocument, text: str) -> So
     return dated[0]
 
 
+def _current(session: Session, document_id: uuid.UUID, *, verified: bool = False):
+    query = select(ExtractedFact).where(
+        ExtractedFact.document_id == document_id, ExtractedFact.is_current
+    )
+    if verified:
+        query = query.where(ExtractedFact.validation_status == "verified")
+    return list(session.scalars(query))
+
+
+def reconcile_version(session: Session, previous_id: uuid.UUID, new_id: uuid.UUID) -> int:
+    """A new version of an uploaded file replaces the old one as a whole.
+
+    Unlike an amendment, which restates only some facts, every current fact of the
+    previous version becomes history. Facts the new version restates (same field
+    and entity, verified) point at their successor, so the change is traceable.
+    Does nothing until the new version has been analysed. "Running" counts: the
+    extractor calls this inside the transaction that will mark its run succeeded.
+    """
+    successors = _current(session, new_id, verified=True)
+    if not session.scalar(
+        select(ExtractionRun.id).where(
+            ExtractionRun.document_id == new_id,
+            ExtractionRun.status.in_(("running", "succeeded")),
+        )
+    ):
+        return 0
+    previous = _current(session, previous_id)
+    for fact, successor in _pair(previous, successors):
+        fact.is_current = False
+        if fact.superseded_by is None and successor is not None:
+            fact.superseded_by = successor.id
+    return len(previous)
+
+
 def reconcile_document(session: Session, document: SourceDocument) -> int:
     """Apply amendment supersession in whichever order the two filings were extracted."""
+    if document.doc_type == UPLOAD_DOC_TYPE:
+        retired = 0
+        if document.supersedes_id is not None:
+            retired += reconcile_version(session, document.supersedes_id, document.id)
+        newer = session.scalar(
+            select(SourceDocument.id).where(SourceDocument.supersedes_id == document.id)
+        )
+        if newer is not None:
+            retired += reconcile_version(session, document.id, newer)
+        return retired
     retired = 0
     if document.supersedes_id is not None:
         retired += reconcile_amendment(session, document.supersedes_id, document.id)
@@ -193,3 +259,57 @@ def fact_history(session: Session, fact_id: uuid.UUID) -> list[ExtractedFact]:
         seen.update(frontier)
         chain.extend(f for f in previous if f.id in frontier)
     return chain
+
+
+def version_changes(session: Session, document: SourceDocument) -> dict:
+    """What changed between this document and the one it supersedes.
+
+    For a new upload version every fact is compared; for an amendment only the
+    facts it restates, since an amendment does not repeat the rest.
+    """
+    if document.supersedes_id is None:
+        return {"previous_id": None, "changes": []}
+    previous_run = session.scalar(
+        select(ExtractionRun.id)
+        .where(
+            ExtractionRun.document_id == document.supersedes_id,
+            ExtractionRun.status == "succeeded",
+        )
+        .order_by(ExtractionRun.started_at.desc())
+    )
+    old = (
+        list(session.scalars(select(ExtractedFact).where(ExtractedFact.run_id == previous_run)))
+        if previous_run
+        else []
+    )
+    new = _current(session, document.id, verified=True)
+    by_id = {fact.id: fact for fact in new}
+    whole_document = document.doc_type == UPLOAD_DOC_TYPE
+    changes: list[dict] = []
+    linked: set[uuid.UUID] = set()
+
+    def entry(kind: str, before: ExtractedFact | None, after: ExtractedFact | None) -> dict:
+        fact = after or before
+        return {
+            "change": kind,
+            "field": fact.field_name,
+            "entity": fact.entity_id,
+            "before": before.value_raw if before else None,
+            "after": after.value_raw if after else None,
+            "fact_id": str(after.id if after else before.id),
+        }
+
+    for fact in old:
+        if fact.validation_status != "verified":
+            continue
+        successor = by_id.get(fact.superseded_by) if fact.superseded_by else None
+        if successor is not None:
+            linked.add(successor.id)
+            if successor.value_normalized != fact.value_normalized:
+                changes.append(entry("changed", fact, successor))
+        elif whole_document:
+            changes.append(entry("removed", fact, None))
+    changes.extend(entry("added", None, fact) for fact in new if fact.id not in linked)
+    if not whole_document:
+        changes = [c for c in changes if c["change"] == "changed"]
+    return {"previous_id": str(document.supersedes_id), "changes": changes}

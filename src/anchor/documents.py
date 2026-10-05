@@ -2,11 +2,17 @@
 
 from pathlib import PurePath
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from anchor.extraction.schema import UPLOAD_DOC_TYPE
-from anchor.models import SourceDocument
+from anchor.models import (
+    Chunk,
+    ExtractedFact,
+    ExtractionRun,
+    ReviewQueue,
+    SourceDocument,
+)
 from anchor.storage import RawStore
 from anchor.text import EXTENSIONS, MEDIA_TYPES, document_to_text
 
@@ -34,9 +40,23 @@ def media_type_for(filename: str, declared: str | None) -> str:
 
 
 def store_upload(
-    session: Session, store: RawStore, filename: str, content: bytes, declared: str | None
+    session: Session,
+    store: RawStore,
+    filename: str,
+    content: bytes,
+    declared: str | None,
+    *,
+    previous: SourceDocument | None = None,
 ) -> tuple[SourceDocument, bool]:
-    """Save an uploaded file. Returns the document and whether it was already known."""
+    """Save an uploaded file, optionally as the next version of `previous`.
+
+    Returns the document and whether identical content was already stored.
+    """
+    if previous is not None:
+        if previous.doc_type != UPLOAD_DOC_TYPE:
+            raise UploadError("Only uploaded documents can get a new version.")
+        if latest_version(session, previous).id != previous.id:
+            raise UploadError("A newer version already exists; add the version to that one.")
     if not content:
         raise UploadError("The file is empty.")
     if len(content) > MAX_UPLOAD_BYTES:
@@ -47,6 +67,8 @@ def store_upload(
         select(SourceDocument).where(SourceDocument.content_hash == blob.content_hash)
     )
     if existing is not None:
+        if previous is not None:
+            raise UploadError("This file is identical to a version that is already stored.")
         return existing, True
     try:
         text = document_to_text(content, media_type)
@@ -60,9 +82,65 @@ def store_upload(
         title=PurePath(filename).name,
         publisher="Uploaded document",
         media_type=media_type,
+        supersedes_id=previous.id if previous is not None else None,
         content_hash=blob.content_hash,
         raw_path=blob.relative_path,
     )
     session.add(document)
     session.commit()
     return document, False
+
+
+def version_chain(session: Session, document: SourceDocument) -> list[SourceDocument]:
+    """All versions of a document, oldest first."""
+    root = document
+    while root.supersedes_id is not None:
+        root = session.get(SourceDocument, root.supersedes_id)
+    chain = [root]
+    while (
+        newer := session.scalar(
+            select(SourceDocument).where(SourceDocument.supersedes_id == chain[-1].id)
+        )
+    ) is not None:
+        chain.append(newer)
+    return chain
+
+
+def latest_version(session: Session, document: SourceDocument) -> SourceDocument:
+    return version_chain(session, document)[-1]
+
+
+def delete_upload(session: Session, store: RawStore, document: SourceDocument) -> int:
+    """Remove an uploaded document with every version, fact, run and chunk.
+
+    The no-deletion rule protects results the system produced from a source; it
+    does not override a user's right to remove a file they uploaded. Filings from
+    EDGAR are never deleted. Returns the number of versions removed.
+    """
+    if document.doc_type != UPLOAD_DOC_TYPE:
+        raise UploadError(
+            "Only uploaded documents can be deleted; filings are kept as audit trail."
+        )
+    chain = version_chain(session, document)
+    ids = [version.id for version in chain]
+    fact_ids = select(ExtractedFact.id).where(ExtractedFact.document_id.in_(ids))
+    session.execute(delete(ReviewQueue).where(ReviewQueue.fact_id.in_(fact_ids)))
+    session.execute(
+        update(ExtractedFact).where(ExtractedFact.document_id.in_(ids)).values(superseded_by=None)
+    )
+    session.execute(delete(ExtractedFact).where(ExtractedFact.document_id.in_(ids)))
+    session.execute(delete(ExtractionRun).where(ExtractionRun.document_id.in_(ids)))
+    session.execute(delete(Chunk).where(Chunk.document_id.in_(ids)))
+    session.execute(
+        update(SourceDocument).where(SourceDocument.id.in_(ids)).values(supersedes_id=None)
+    )
+    paths = [version.raw_path for version in chain]
+    session.execute(delete(SourceDocument).where(SourceDocument.id.in_(ids)))
+    session.commit()
+    for path in paths:
+        still_used = session.scalar(
+            select(SourceDocument.id).where(SourceDocument.raw_path == path)
+        )
+        if still_used is None:
+            store.remove(path)
+    return len(chain)

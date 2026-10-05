@@ -58,6 +58,13 @@ field set (dates, amounts, parties, people, percentages, deadlines, durations).
 | `POST /documents/{id}/analyze` | start extraction and indexing in the background |
 | `GET /documents/{id}/status` | progress: queued, extracting, indexing, ready, failed |
 | `GET /ask?q=…&document_id=…` | ask, optionally limited to one document |
+| `POST /documents/{id}/versions` | upload an edited file as the next version |
+| `GET /documents/{id}/changes` | values changed, added or removed since the previous version |
+| `DELETE /documents/{id}` | delete an upload with all its versions (filings cannot be deleted) |
+
+Edit a contract and upload it again: the old version and every value it held stay
+in the history, each linked to the value that replaced it, and the viewer shows
+exactly what changed (`$84,000 → $90,000`).
 
 ## Architecture
 
@@ -114,7 +121,13 @@ versions, tokens and list-price cost.
   the two (`supersedes_id`) and retires only the facts the amendment restates.
   An amendment fact that failed verification never displaces a verified one.
   Tested on a real pair: Apple's April 2026 CEO-transition 8-K and its September 8-K/A.
+- **New versions of an upload.** A new version replaces the old one as a whole: every
+  value of the old version becomes history; restated values link to their successor.
+  Matching falls back from (field, label) to (field, value), because models label the
+  same value differently between runs — measured in [decision 005](docs/decisions/005-upload-versions-and-deletion.md).
 - **History.** `GET /facts/{id}/history` walks back through every earlier value.
+- **Deletion.** Only a user's own upload can be deleted (all versions, values, chunks and
+  the stored file). Filings are an audit trail and cannot be deleted.
 
 ## How answers are checked
 

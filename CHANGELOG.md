@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   long documents read in parts; questions scoped to one document.
 - Redesigned viewer: three-step guide, drag-and-drop upload, legend, plain-language stats.
 - Gemini calls retry on rate limits; per-share amounts with a "per share" suffix normalize.
+- New versions of uploaded documents with a what-changed view; deletion of uploads.
 
 ## [0.1.0] - 2026-10-02
 
