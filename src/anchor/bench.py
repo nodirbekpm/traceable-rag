@@ -16,7 +16,6 @@ import time
 from pathlib import Path
 
 from sqlalchemy import text
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from anchor.config import get_settings
@@ -56,7 +55,7 @@ def _timed(session: Session, sql: str, params: dict, runs: int = 1) -> tuple[lis
 def retrieval_latency(session: Session) -> tuple[list[dict], dict[str, str]]:
     from anchor.embedding import build_embedder
     from anchor.evals.suites import load
-    from anchor.retrieval import MODES, keyword_query, retrieve
+    from anchor.retrieval import MODES, retrieve
 
     embedder = build_embedder(get_settings())
     questions = [q["question"] for q in load("questions.jsonl")]
@@ -85,13 +84,12 @@ def retrieval_latency(session: Session) -> tuple[list[dict], dict[str, str]]:
         "ORDER BY embedding <=> CAST(:v AS vector) LIMIT 10",
         {"v": str(vector)},
     )
-    compiled = keyword_query(questions[0]).compile(
-        dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
-    )
+    # Same expression as retrieval.keyword_query, written out so EXPLAIN can bind it.
+    tsquery = "replace(plainto_tsquery('english', :q)::text, '&', '|')::tsquery"
     plans["text"] = (
-        f"SELECT id FROM chunk WHERE chunk_strategy = 'section' AND tsv @@ {compiled} "
-        f"ORDER BY ts_rank_cd(tsv, {compiled}) DESC LIMIT 10",
-        {},
+        f"SELECT id FROM chunk WHERE chunk_strategy = 'section' AND tsv @@ {tsquery} "
+        f"ORDER BY ts_rank_cd(tsv, {tsquery}) DESC LIMIT 10",
+        {"q": questions[0]},
     )
     rendered = {}
     for name, (sql, params) in plans.items():
