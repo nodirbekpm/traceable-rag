@@ -35,7 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Viewer page at `/`: highlighted spans, streaming answers, provenance and history.
 - `python -m anchor.bench`: retrieval latency, EXPLAIN plans, HNSW vs IVFFlat,
   partial-index saving; `HNSW_EF_SEARCH` setting.
-- Case study and portfolio entry drafts in `docs/`.
 - Upload any document (PDF, DOCX, HTML, TXT, MD); time and cost estimate before
   analysis; background analysis with progress; general field set for uploads;
   long documents read in parts; questions scoped to one document.

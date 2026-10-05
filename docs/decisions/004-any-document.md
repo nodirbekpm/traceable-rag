@@ -1,29 +1,37 @@
-# 004. Istalgan hujjatni yuklash — faqat EDGAR emas
-Sana: 2026-10-03 | Holat: qabul qilindi
+# 004. Analyse any uploaded document, not only EDGAR filings
 
-## Muammo
-TZ namoyish sohasini EDGAR bilan cheklagan (9-bo'lim: "bir nechta soha kirmaydi"). Jonli sinovda
-ma'lum bo'ldi: portfolio ko'ruvchisi (Upwork mijozi) o'z hujjatini sinab ko'rmoqchi bo'ladi. Faqat
-EDGAR'dan yuklaydigan tizim "servis" emas, bitta ma'lumot manbasi uchun yozilgan demo bo'lib ko'rinadi.
-Foydalanuvchi (loyiha egasi) TZ'ni o'zgartirishni talab qildi.
+Date: 2026-10-03 · Status: accepted
 
-## Ko'rib chiqilgan variantlar
-- Faqat EDGAR, istalgan kompaniya CIK bo'yicha — mijoz o'z hujjatini sinay olmaydi.
-- Yuklash + darhol tahlil — katta faylda kutilmagan vaqt va narx, mijoz nima bo'layotganini bilmaydi.
-- Yuklash → taxmin (vaqt, narx) → tasdiq → fonda tahlil, jarayon ko'rsatiladi.
+## Problem
 
-## Qaror
-Uchinchi variant. Konvertatsiya (`text.document_to_text`) formatga qarab: HTML, PDF (pypdf), DOCX
-(python-docx), TXT/MD. Barcha oraliqlar shu chiqishga nisbatan, xom baytlar o'zgarmas saqlanadi.
-Yuklangan hujjatlar umumiy maydonlar profilida (`g1`), EDGAR — `s1`; 8-K prompt matni bayt-bayt
-o'zgarmagani xesh bilan tekshirildi, shuning uchun mavjud run'lar va idempotentlik kaliti amal qiladi.
-Uzun hujjat 40 000 belgilik qismlarga bo'linadi; iqtibos butun matnda qidiriladi.
+The original scope limited the demo domain to SEC EDGAR. In live testing it became
+clear that a visitor wants to try their own document; a system that only reads one
+public source looks like a demo, not a service.
 
-Taxmin shu o'rnatmaning tarixidan: tugagan run'larning soniya / 1000 kirish tokeni nisbati (3 tadan
-kam run bo'lsa — standart 3 s), embedding tezligi (o'lchangan 20 bo'lak/s), bepul tarif kutishlari.
+## Options
 
-## Natija
-- Uch va'da saqlandi: provenance (iqtibos tekshiruvi format-mustaqil), versiyalash (bir xil xesh —
-  dublikat yaratilmaydi), o'lchov (taxmin haqiqiy tarixdan).
-- O'lchov korpusi EDGAR bo'lib qoladi — natijalar takrorlanadigan bo'lishi uchun.
-- Taxmin aniqligi (taxmin vs haqiqiy vaqt) jonli sinovda o'lchanadi va README'ga yoziladi.
+- EDGAR only, any company by CIK — a visitor still cannot try their own file.
+- Upload and analyse immediately — a large file brings unexpected time and cost, and
+  the user cannot see what is happening.
+- Upload → estimate (time, cost) → confirmation → background analysis with progress.
+
+## Decision
+
+The third option. Conversion (`text.document_to_text`) depends on the format: HTML,
+PDF (pypdf), DOCX (python-docx), TXT/MD. All spans refer to this output; raw bytes
+stay unchanged. Uploads use a general field profile (`g1`); filings keep the 8-K
+profile (`s1`). The 8-K prompt was verified to render byte-for-byte as before (same
+SHA-256), so existing runs and the idempotency key remain valid. Long documents are
+read in 40,000-character windows; quotes are located in the full text.
+
+The estimate uses this installation's history: seconds per 1,000 input tokens of
+finished runs (a default of 3 s until there are three runs), the measured embedding
+rate (20 chunks/s) and the free-tier rate limit.
+
+## Result
+
+- Provenance, versioning and measurement are unchanged: quote checking is
+  format-independent, identical content is never stored twice, and the estimate comes
+  from real history.
+- The eval corpus stays EDGAR, so results remain reproducible.
+- First live check: estimate 6 s, actual analysis 5.3 s (one-page contract).

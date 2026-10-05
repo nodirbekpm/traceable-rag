@@ -1,33 +1,42 @@
-# 003. Embedding: lokal CPU modeli, 384 o'lcham; tezlik maqsadi bajarilmadi
-Sana: 2026-10-02 | Holat: qabul qilindi (6-bosqichda recall bilan qayta ko'riladi)
+# 003. Local CPU embeddings, 384 dimensions — throughput target missed
 
-## Muammo
-TZ: `embedding vector(1536)` (OpenAI o'lchami) va embedding tezligi > 200 bo'lak/soniya.
-Loyiha bepul vositalarda ishlashi shart; ishchi mashinada CUDA yo'q (AMD RX 570), Docker ichida GPU yo'q.
+Date: 2026-10-02 · Status: accepted (to be revisited against recall@5)
 
-## O'lchov (i5-12400, 12 oqim, Docker, o'rtacha bo'lak ~740 belgi)
-| Model | O'lcham | batch=4 | batch=32 |
+## Problem
+
+The plan assumed `vector(1536)` embeddings and more than 200 chunks per second. The
+project must run on free tooling; the reference machine has no CUDA GPU (AMD RX 570)
+and everything runs in Docker.
+
+## Measurement
+
+Intel i5-12400 (12 threads), Docker, average chunk ≈ 740 characters.
+
+| Model | Dimensions | batch=4 | batch=32 |
 |---|---|---|---|
-| BAAI/bge-small-en-v1.5 | 384 | 25 bo'lak/s | 21 bo'lak/s |
-| sentence-transformers/all-MiniLM-L6-v2 | 384 | 44 bo'lak/s | 52 bo'lak/s |
+| BAAI/bge-small-en-v1.5 | 384 | 25 chunks/s | 21 chunks/s |
+| sentence-transformers/all-MiniLM-L6-v2 | 384 | 44 chunks/s | 52 chunks/s |
 
-Birinchi haqiqiy indekslash (5 hujjat, 3 strategiya, 95 bo'lak, model yuklash bilan): 8.5 s.
-O'lchov paytida xostda bo'sh RAM ~2 GB edi — raqamlar pastroq chiqqan bo'lishi mumkin.
+First real indexing run (5 filings, 3 strategies, 95 chunks, including model load):
+8.5 s. Free host memory was about 2 GB during the measurement, so these numbers may
+be on the low side.
 
-## Ko'rib chiqilgan variantlar
-- OpenAI embedding API (1536) — pulli.
-- Gemini embedding API (bepul tarif) — kunlik chegara, tarmoqqa bog'liq, kalit kerak.
-- Lokal ONNX model CPU'da (fastembed) — bepul, kalitsiz, sekinroq.
+## Options
 
-## Qaror
-- `BAAI/bge-small-en-v1.5`, 384 o'lcham, `fastembed` orqali. `chunk.embedding` = `vector(384)`.
-- Model nomi sozlama (`EMBEDDING_MODEL`), har bo'lakda `embedding_model` saqlanadi; boshqa o'lchamli
-  model uchun migratsiya kerak — kod buni aniq xato bilan aytadi.
-- MiniLM ~2 baravar tez, lekin qidiruv uchun maxsus o'qitilmagan. Qaysi biri qolishini tezlik emas,
-  6-bosqichdagi recall@5 hal qiladi.
+- Paid embedding API (1536 dimensions).
+- Free-tier embedding API — daily limits, network-bound, needs a key.
+- Local ONNX model on CPU through fastembed — free, no key, slower.
 
-## Natija
-- **Maqsad bajarilmadi:** 21–25 bo'lak/s, maqsad > 200. Sabab: GPU yo'q.
-- Amaliy ta'sir kichik: 1000 bo'lak ≈ 45 soniya, indekslash bir martalik va idempotent.
-- 7-bosqichda sodda choralar sinaladi (ONNX oqim sozlamalari, kvantlangan model, bo'lak uzunligi);
-  yetmasa TZ 8-bo'lim tartibida alohida yechim ko'riladi.
+## Decision
+
+`BAAI/bge-small-en-v1.5` through fastembed, `chunk.embedding = vector(384)`. The
+model name is a setting and is stored on every chunk; a model with another size needs
+a migration, and indexing refuses to run with a clear error until it exists. MiniLM is
+twice as fast but not trained for retrieval; recall@5 in the eval suite, not speed,
+decides between them.
+
+## Result
+
+- **Target missed:** 21–25 chunks/s against > 200. Cause: no GPU.
+- Practical impact is small: 1,000 chunks take about 45 s, once, and re-indexing is
+  idempotent.

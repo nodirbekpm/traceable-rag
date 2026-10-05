@@ -1,25 +1,32 @@
-# 001. `chunk`, `query_log`, `eval_result` jadvallari keyingi bosqichlarga qoldirildi
-Sana: 2026-10-02 | Holat: qabul qilindi
+# 001. Retrieval-side tables are added by the stage that needs them
 
-## Muammo
-TZ 6-bo'limi yetti jadvalni bitta skelet sifatida beradi, `chunk.embedding` esa `vector(1536)` deb
-qotirilgan. 1536 — OpenAI embedding o'lchami. Loyiha bepul vositalarda ishlashi shart, ishchi mashinada
-CUDA yo'q (AMD RX 570) — lokal CPU modellarining o'lchami odatda 384 yoki 768. O'lcham 4-bosqichda
-o'lchov bilan tanlanadi; hozir qotirilsa, keyin ustun turini o'zgartiruvchi migratsiya kerak bo'ladi.
+Date: 2026-10-02 · Status: accepted
 
-## Ko'rib chiqilgan variantlar
-- Yetti jadvalni hozir yaratish, `vector(1536)` bilan — o'lcham o'zgarsa qayta migratsiya.
-- `vector` ni o'lchamsiz e'lon qilish — HNSW indeks o'lchamsiz ustunda qurilmaydi.
-- Faqat Core jadvallarini yaratish, qolganini egasi bo'lgan bosqichda qo'shish.
+## Problem
 
-## Qaror
-1-bosqichda `source_document`, `extraction_run`, `extracted_fact`, `review_queue` yaratiladi.
-`chunk` — 4-bosqich, `query_log` — 5-bosqich, `eval_result` — 6-bosqich. `vector` kengaytmasi
-birinchi migratsiyada yoqiladi.
+The original data model listed seven tables up front and fixed `chunk.embedding` as
+`vector(1536)` — the size of a paid OpenAI embedding. The project has to run on free
+tooling, and the reference machine has no CUDA GPU; local CPU models produce 384 or
+768 dimensions. Fixing the size before measuring would force a type-changing
+migration later.
 
-Qo'shimcha: `source_document` ga `external_id` (EDGAR accession raqami, UNIQUE) va `publisher_id`
-(CIK) qo'shildi — qayta yuklamasdan dublikatni aniqlash uchun.
+## Options
 
-## Natija
-O'lchanadigan tezlik farqi yo'q — bu tartib qarori. Uch va'daga ta'sir qilmaydi: provenance cheklovi
-(`verified` holati span'siz yozilmaydi) va `is_current` partial indeksi birinchi migratsiyada bor.
+- Create all seven tables now with `vector(1536)` — re-migrate if the model changes.
+- Declare `vector` without a size — HNSW cannot index a column of unknown dimension.
+- Create the core tables now; add `chunk`, `query_log` and `eval_result` with the
+  stage that uses them.
+
+## Decision
+
+Stage 1 creates `source_document`, `extraction_run`, `extracted_fact` and
+`review_queue`, and enables the `vector` extension. `chunk` arrives with indexing,
+`query_log` with answers, `eval_result` with the eval harness.
+`source_document` also gets `external_id` (EDGAR accession number, unique) and
+`publisher_id` (CIK), so duplicates are detected before downloading.
+
+## Result
+
+No performance effect — this is an ordering decision. The provenance constraint
+(no `verified` fact without a span) and the partial index on current facts were in
+the first migration.
