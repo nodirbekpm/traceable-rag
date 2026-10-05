@@ -21,6 +21,8 @@
     }
   }
   * { box-sizing: border-box; }
+  /* Author rules like `display: flex` would otherwise override the hidden attribute. */
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   button, input, select { font: inherit; color: inherit; }
