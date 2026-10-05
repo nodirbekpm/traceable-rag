@@ -21,7 +21,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -30,11 +30,17 @@ from anchor.answer import AskConfig, ask_stream
 from anchor.cache import RedisCache
 from anchor.config import get_settings
 from anchor.db import get_session, get_sessionmaker
-from anchor.documents import UploadError, load_text, store_upload
+from anchor.documents import (
+    UploadError,
+    delete_upload,
+    load_text,
+    store_upload,
+    version_chain,
+)
 from anchor.embedding import build_embedder
 from anchor.estimate import estimate_analysis
 from anchor.extraction.review import ReviewError, open_reviews, resolve
-from anchor.extraction.versioning import fact_history
+from anchor.extraction.versioning import fact_history, version_changes
 from anchor.llm import LLMError, build_llm
 from anchor.models import ExtractedFact, ExtractionRun, SourceDocument
 from anchor.rerank import LLMReranker, NoReranker, cross_encoder
@@ -62,6 +68,9 @@ class DocumentOut(BaseModel):
     supersedes_id: uuid.UUID | None
     title: str | None
     media_type: str
+    # 1 for the first version; filings count their amendments the same way.
+    version: int = 1
+    is_latest: bool = True
 
 
 class FactOut(BaseModel):
@@ -153,10 +162,29 @@ def get_run(run_id: uuid.UUID, session: SessionDep) -> ExtractionRun:
 
 
 @app.get("/documents", response_model=list[DocumentOut])
-def list_documents(session: SessionDep) -> list[SourceDocument]:
-    return list(
-        session.scalars(select(SourceDocument).order_by(SourceDocument.published_at.desc()))
+def list_documents(session: SessionDep) -> list[DocumentOut]:
+    documents = list(
+        session.scalars(
+            select(SourceDocument).order_by(
+                func.coalesce(SourceDocument.published_at, SourceDocument.retrieved_at).desc()
+            )
+        )
     )
+    by_id = {document.id: document for document in documents}
+    superseded = {d.supersedes_id for d in documents if d.supersedes_id is not None}
+
+    def version(document: SourceDocument) -> int:
+        number = 1
+        while document.supersedes_id in by_id:
+            document, number = by_id[document.supersedes_id], number + 1
+        return number
+
+    return [
+        DocumentOut.model_validate(d).model_copy(
+            update={"version": version(d), "is_latest": d.id not in superseded}
+        )
+        for d in documents
+    ]
 
 
 @app.get("/documents/{document_id}/facts", response_model=list[FactOut])
@@ -329,3 +357,67 @@ def analyze_document(
 @app.get("/documents/{document_id}/status")
 def document_status(document_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
     return analysis.status(session, document_id)
+
+
+# --- versions and deletion of uploads ------------------------------------------------
+
+
+def _uploaded(session: Session, document_id: uuid.UUID) -> SourceDocument:
+    document = session.get(SourceDocument, document_id)
+    if document is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
+    return document
+
+
+@app.post("/documents/{document_id}/versions", status_code=status.HTTP_201_CREATED)
+async def upload_version(
+    document_id: uuid.UUID, file: Annotated[UploadFile, File()], session: SessionDep
+) -> dict:
+    """Store an edited file as the next version. The old version and its facts are kept."""
+    previous = _uploaded(session, document_id)
+    content = await file.read()
+    store = RawStore(get_settings().raw_storage_dir)
+    try:
+        document, _ = store_upload(
+            session, store, file.filename or "document", content, file.content_type,
+            previous=previous,
+        )  # fmt: skip
+    except UploadError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    out = DocumentOut.model_validate(document).model_copy(
+        update={"version": len(version_chain(session, document))}
+    )
+    return {
+        "document": out.model_dump(mode="json"),
+        "duplicate": False,
+        "estimate": _estimate(session, document),
+        "status": analysis.status(session, document.id),
+    }
+
+
+@app.get("/documents/{document_id}/versions", response_model=list[DocumentOut])
+def list_versions(document_id: uuid.UUID, session: SessionDep) -> list[DocumentOut]:
+    chain = version_chain(session, _uploaded(session, document_id))
+    return [
+        DocumentOut.model_validate(d).model_copy(
+            update={"version": number, "is_latest": number == len(chain)}
+        )
+        for number, d in enumerate(chain, start=1)
+    ]
+
+
+@app.get("/documents/{document_id}/changes")
+def document_changes(document_id: uuid.UUID, session: SessionDep) -> dict:
+    """Values changed, added or removed compared with the previous version."""
+    return version_changes(session, _uploaded(session, document_id))
+
+
+@app.delete("/documents/{document_id}")
+def remove_document(document_id: uuid.UUID, session: SessionDep) -> dict[str, int]:
+    """Delete an uploaded document and all its versions. Filings cannot be deleted."""
+    document = _uploaded(session, document_id)
+    try:
+        removed = delete_upload(session, RawStore(get_settings().raw_storage_dir), document)
+    except UploadError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    return {"deleted_versions": removed}

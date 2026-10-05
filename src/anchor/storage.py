@@ -39,3 +39,7 @@ class RawStore:
 
     def get(self, relative_path: str) -> bytes:
         return (self._root / relative_path).read_bytes()
+
+    def remove(self, relative_path: str) -> None:
+        """Delete a blob; only for user-requested deletion of an upload."""
+        (self._root / relative_path).unlink(missing_ok=True)
