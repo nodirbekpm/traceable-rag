@@ -16,7 +16,6 @@ import time
 from pathlib import Path
 
 from sqlalchemy import text
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from anchor.config import get_settings
@@ -56,7 +55,7 @@ def _timed(session: Session, sql: str, params: dict, runs: int = 1) -> tuple[lis
 def retrieval_latency(session: Session) -> tuple[list[dict], dict[str, str]]:
     from anchor.embedding import build_embedder
     from anchor.evals.suites import load
-    from anchor.retrieval import MODES, keyword_query, retrieve
+    from anchor.retrieval import MODES, retrieve
 
     embedder = build_embedder(get_settings())
     questions = [q["question"] for q in load("questions.jsonl")]
@@ -85,13 +84,12 @@ def retrieval_latency(session: Session) -> tuple[list[dict], dict[str, str]]:
         "ORDER BY embedding <=> CAST(:v AS vector) LIMIT 10",
         {"v": str(vector)},
     )
-    compiled = keyword_query(questions[0]).compile(
-        dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
-    )
+    # Same expression as retrieval.keyword_query, written out so EXPLAIN can bind it.
+    tsquery = "replace(plainto_tsquery('english', :q)::text, '&', '|')::tsquery"
     plans["text"] = (
-        f"SELECT id FROM chunk WHERE chunk_strategy = 'section' AND tsv @@ {compiled} "
-        f"ORDER BY ts_rank_cd(tsv, {compiled}) DESC LIMIT 10",
-        {},
+        f"SELECT id FROM chunk WHERE chunk_strategy = 'section' AND tsv @@ {tsquery} "
+        f"ORDER BY ts_rank_cd(tsv, {tsquery}) DESC LIMIT 10",
+        {"q": questions[0]},
     )
     rendered = {}
     for name, (sql, params) in plans.items():
@@ -101,23 +99,53 @@ def retrieval_latency(session: Session) -> tuple[list[dict], dict[str, str]]:
     return rows, rendered
 
 
-def index_study(session: Session, n: int, queries: int) -> list[dict]:
+# Noise added to real embeddings to grow the corpus; small enough to keep its clusters.
+NOISE = 0.02
+
+
+def index_study(session: Session, n: int, queries: int) -> tuple[list[dict], str]:
+    """Compare vector indexes on n vectors. Returns the rows and how the data was made."""
     session.execute(text("DROP TABLE IF EXISTS bench_vectors"))
     session.execute(
         text(f"CREATE TABLE bench_vectors (id serial PRIMARY KEY, embedding vector({DIMENSIONS}))")
     )
-    # `WHERE g > 0` ties the inner query to the row, so every row gets its own random vector.
-    session.execute(
-        text(
-            "INSERT INTO bench_vectors (embedding) "
-            f"SELECT (SELECT array_agg(random() - 0.5) FROM generate_series(1, {DIMENSIONS}) "
-            "        WHERE g > 0)::vector FROM generate_series(1, :n) AS g"
-        ),
-        {"n": n},
-    )
+    real = session.scalar(text("SELECT count(*) FROM chunk"))
+    # `WHERE g > 0` / `WHERE c.id IS NOT NULL` tie the inner query to the outer row, so
+    # Postgres evaluates it per row instead of once.
+    if real:
+        # Real embeddings cluster by topic; random vectors do not, and in 384 dimensions
+        # every random point is about equally far from every other, which makes any
+        # approximate index look broken. Grow the real corpus with small noise instead.
+        source = f"{real} real chunk embeddings, each repeated with noise ±{NOISE}"
+        session.execute(
+            text(
+                "INSERT INTO bench_vectors (embedding) "
+                "SELECT (SELECT array_agg(e + (random() - 0.5) * :noise) "
+                "        FROM unnest(c.embedding::real[]) AS e WHERE g > 0)::vector "
+                "FROM chunk AS c, generate_series(1, CEIL(:n / :real)::int) AS g "
+                "LIMIT :n"
+            ),
+            {"n": n, "real": real, "noise": NOISE * 2},
+        )
+        probe_sql = (
+            "SELECT (SELECT array_agg(e + (random() - 0.5) * :noise) "
+            "        FROM unnest(embedding::real[]) AS e WHERE c.id IS NOT NULL)::vector::text "
+            "FROM chunk AS c ORDER BY random() LIMIT :q"
+        )
+        probes = list(session.scalars(text(probe_sql), {"noise": NOISE * 4, "q": queries}))
+    else:
+        source = "random vectors (no indexed chunks found)"
+        session.execute(
+            text(
+                "INSERT INTO bench_vectors (embedding) "
+                f"SELECT (SELECT array_agg(random() - 0.5) FROM generate_series(1, {DIMENSIONS}) "
+                "        WHERE g > 0)::vector FROM generate_series(1, :n) AS g"
+            ),
+            {"n": n},
+        )
+        rng = random.Random(7)
+        probes = [str([rng.random() - 0.5 for _ in range(DIMENSIONS)]) for _ in range(queries)]
     session.commit()
-    rng = random.Random(7)
-    probes = [str([rng.random() - 0.5 for _ in range(DIMENSIONS)]) for _ in range(queries)]
     knn = "SELECT id FROM bench_vectors ORDER BY embedding <=> CAST(:v AS vector) LIMIT 10"
 
     session.execute(text("SET enable_indexscan = off"))
@@ -168,7 +196,7 @@ def index_study(session: Session, n: int, queries: int) -> list[dict]:
         session.commit()
     session.execute(text("DROP TABLE bench_vectors"))
     session.commit()
-    return rows
+    return rows, source
 
 
 def partial_index_saving(session: Session) -> dict:
@@ -216,7 +244,9 @@ def main() -> None:
         for name, plan in plans.items():
             (OUT / f"explain-{name}.txt").write_text(plan + "\n", encoding="utf-8")
         partial = partial_index_saving(session)
-        study = [] if args.skip_index_study else index_study(session, args.vectors, args.queries)
+        study, source = (
+            ([], "") if args.skip_index_study else index_study(session, args.vectors, args.queries)
+        )
 
     report = [
         "# Performance report",
@@ -238,11 +268,10 @@ def main() -> None:
     if study:
         report += [
             "",
-            f"## Vector index study ({args.vectors:,} synthetic {DIMENSIONS}-d vectors, "
+            f"## Vector index study ({args.vectors:,} {DIMENSIONS}-d vectors, "
             f"{args.queries} queries)",
             "",
-            "Random vectors are a pessimistic case for approximate indexes: real embeddings "
-            "cluster, which raises recall at the same setting.",
+            f"Data: {source}. Recall is measured against an exact scan of the same table.",
             "",
             _table(study),
         ]

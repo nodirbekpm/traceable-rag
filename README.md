@@ -161,8 +161,33 @@ Every run is stored in `eval_result` with per-question details, so a regression
 can be traced to the questions that changed. The latest report is written to
 [`evals/reports/latest.md`](evals/reports).
 
-> **Results:** pending the first full run against a live model. This section is
-> filled from `evals/reports/latest.md`; until then no accuracy number is claimed.
+### Retrieval results (62 answerable questions)
+
+A hit counts when a retrieved chunk overlaps the span of the gold evidence quote.
+
+| Mode | Chunking | Reranker | recall@5 | recall@10 | MRR | p95 |
+|---|---|---|---|---|---|---|
+| keyword (`tsvector`) | section | — | 0.855 | 0.968 | 0.641 | 7.4 ms |
+| vector (HNSW) | section | — | 0.984 | 1.000 | 0.880 | 11.1 ms |
+| **hybrid (RRF)** | **section** | — | **0.984** | **1.000** | **0.907** | **26.5 ms** |
+| hybrid (RRF) | sentence window | — | 0.968 | 0.984 | 0.864 | 29.2 ms |
+| hybrid (RRF) | fixed 800 / 120 | — | 0.952 | 0.984 | 0.847 | 30.1 ms |
+| hybrid (RRF) | section | cross-encoder | 1.000 | 1.000 | 0.951 | 2,122 ms |
+
+- **Hybrid beats either search alone** on ranking quality (MRR 0.907 vs 0.880 vector,
+  0.641 keyword) at the same recall as vector search.
+- **Section-aware chunking wins** for every mode: `Item` boundaries keep a fact and
+  its context in one chunk.
+- **The cross-encoder** lifts recall@5 to 1.000 and MRR to 0.951, but costs ~2 s on
+  CPU — 20× over the 100 ms rerank budget.
+
+All nine combinations are in [`evals/reports/latest.md`](evals/reports/latest.md).
+
+### Extraction and answer results
+
+Not published yet. The free Gemini tier allows a limited number of calls per day,
+and 26 of the 36 gold filings have been extracted so far. These tables will be
+filled from `python -m anchor.evals run`; until then no accuracy number is claimed.
 
 ## Measurements
 
@@ -171,18 +196,45 @@ are listed as missed.
 
 | What | Target | Measured | Status |
 |---|---|---|---|
+| Retrieval p95, hybrid, rerank excluded | < 150 ms | 29.9 ms (72 questions, warm) | ok |
+| Retrieval p95, vector only / keyword only | — | 15.0 ms / 10.0 ms | — |
+| Rerank p95, cross-encoder on CPU | < 100 ms | ~2.1 s | **missed** (no GPU) |
+| Time to first verified claim | < 1.5 s | 3.4–5.0 s (4 live questions; rerank is most of it) | **missed** |
+| Analysis estimate vs actual, one-page contract | — | 6 s estimated, 5.3 s actual | — |
 | Embedding throughput, `bge-small-en-v1.5`, ~740-char chunks | > 200 chunks/s | 21–25 chunks/s | **missed** (CPU only; [decision 003](docs/decisions/003-local-cpu-embeddings.md)) |
 | Embedding throughput, `all-MiniLM-L6-v2` | > 200 chunks/s | 44–52 chunks/s | **missed** |
-| Re-indexing an indexed corpus | no work | 0 chunks embedded, 0.1 s | ok |
-| Re-ingesting stored filings | no work | 0 downloads, 0 rows | ok |
-| Retrieval p95 (rerank excluded) | < 150 ms | pending `python -m anchor.bench` | — |
-| Time to first claim | < 1.5 s | pending first live run | — |
-| Cache hit | < 50 ms | pending | — |
+| Re-indexing / re-ingesting stored data | no work | 0 chunks embedded / 0 downloads | ok |
+| Cache hit | < 50 ms | not measured yet | — |
 
-`python -m anchor.bench` measures retrieval latency per mode, saves
-`EXPLAIN (ANALYZE, BUFFERS)` plans, compares HNSW and IVFFlat (build time, size,
-recall@10, p50/p95 against an exact scan) and reports what the partial index on
-current facts saves. Output: [`docs/perf/report.md`](docs/perf).
+The main latency bottleneck is the CPU cross-encoder, not the database. The project
+rule is to measure, then try the simple fix first: fewer rerank candidates or a
+smaller model come before any new infrastructure.
+
+### Vector index study
+
+50,000 vectors built from the 910 real chunk embeddings of the eval corpus, each
+repeated with small noise, 100 probe queries, recall against an exact scan. The data
+clusters tightly, which flatters approximate indexes; the comparison between them
+still holds.
+
+| Index | Setting | Build | Size | recall@10 | p95 |
+|---|---|---|---|---|---|
+| none (exact scan) | — | — | — | 1.000 | 22.9 ms |
+| HNSW m=16, ef_construction=64 | ef_search=40 (pgvector default) | 13.4 s | 96 MB | 0.958 | 1.4 ms |
+| **HNSW m=16, ef_construction=64** | **ef_search=100 (chosen)** | 13.4 s | 96 MB | **0.973** | **1.4 ms** |
+| HNSW m=32, ef_construction=128 | ef_search=100 | 32.3 s | 99 MB | 1.000 | 1.4 ms |
+| IVFFlat lists=223 | probes=1 | 6.6 s | 78 MB | 0.979 | 0.8 ms |
+| IVFFlat lists=223 | probes=10 | 6.6 s | 78 MB | 1.000 | 2.8 ms |
+
+- An index is **16× faster** than an exact scan at 50k vectors.
+- Raising `hnsw.ef_search` from 40 to 100 gained 1.5 points of recall at no latency
+  cost, so 100 is the default (`HNSW_EF_SEARCH`).
+- At today's corpus size (910 chunks) the planner correctly ignores the index and
+  scans: 0.6 ms, 950 buffer hits ([plan](docs/perf/explain-vector.txt)).
+- The partial index on current facts is the same size as a full one (16 KB each) at
+  289 facts; it pays off only once many superseded versions accumulate.
+
+Reproduce with `python -m anchor.bench`; output in [`docs/perf/report.md`](docs/perf/report.md).
 
 ## Engineering decisions
 

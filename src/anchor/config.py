@@ -17,8 +17,9 @@ class Settings(BaseSettings):
 
     # Local CPU model, 384 dimensions. A model with another size needs a migration.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
-    # HNSW search breadth: higher finds more true neighbours, slower. pgvector default: 40.
-    hnsw_ef_search: int = 40
+    # HNSW search breadth. 100 raised recall@10 from 0.958 to 0.973 at the same p95
+    # (1.4 ms) in docs/perf/report.md; pgvector default is 40.
+    hnsw_ef_search: int = 100
 
     # Measured on this project's reference machine (CPU only); used by the estimate.
     embedding_chunks_per_second: float = 20.0
