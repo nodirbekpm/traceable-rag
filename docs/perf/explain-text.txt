@@ -1,0 +1,14 @@
+Limit (actual time=1.536..1.537 rows=10 loops=1)
+  Buffers: shared hit=503
+  ->  Sort (actual time=1.535..1.536 rows=10 loops=1)
+        Sort Key: (ts_rank_cd(tsv, '''appl'' | ''board'' | ''appoint'' | ''next'' | ''chief'' | ''execut'' | ''offic'''::tsquery)) DESC
+        Sort Method: top-N heapsort  Memory: 26kB
+        Buffers: shared hit=503
+        ->  Seq Scan on chunk (actual time=0.049..1.521 rows=85 loops=1)
+              Filter: ((tsv @@ '''appl'' | ''board'' | ''appoint'' | ''next'' | ''chief'' | ''execut'' | ''offic'''::tsquery) AND ((chunk_strategy)::text = 'section'::text))
+              Rows Removed by Filter: 825
+              Buffers: shared hit=503
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.125 ms
+Execution Time: 1.545 ms
