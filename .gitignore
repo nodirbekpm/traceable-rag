@@ -32,8 +32,10 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 
-# Claude Code (lokal)
-.claude/settings.local.json
+# Local editor and assistant settings
+.claude/
+CLAUDE.md
+.githooks/
 
 # Local working notes, not part of the public project
 private/
